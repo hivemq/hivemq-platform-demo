@@ -18,6 +18,12 @@ public class ContainersRunner {
     private final Scheduler ioScheduler;
     private final DockerManager dockerManager;
 
+    // Preflight: verify the Docker daemon is reachable before the flow starts, so a missing/stopped
+    // Docker fails immediately instead of after the user has already signed in and provisioned.
+    public Completable ensureDockerAvailable() {
+        return dockerManager.ensureDockerAvailable();
+    }
+
     public Completable run(final Map<String, String> brokerEnv, final Map<String, String> orchestratorEnv) {
 
         final var broker = brokerSpec().withMergedEnv(brokerEnv);
@@ -53,10 +59,18 @@ public class ContainersRunner {
     }
 
     public Completable teardown() {
-        return mergeArray(
-                        dockerManager.forceRemoveByName(BROKER_CONTAINER_NAME),
-                        dockerManager.forceRemoveByName(ORCHESTRATOR_CONTAINER_NAME))
+        return mergeArray(forceRemoveQuietly(BROKER_CONTAINER_NAME), forceRemoveQuietly(ORCHESTRATOR_CONTAINER_NAME))
                 .subscribeOn(ioScheduler);
+    }
+
+    // Teardown is best-effort cleanup from the shutdown hook: if the daemon is unreachable (e.g. the
+    // run failed the Docker preflight) or a container was never created, there's nothing to remove —
+    // swallow so the shutdown thread never surfaces an uncaught stack trace.
+    private Completable forceRemoveQuietly(final String name) {
+        return dockerManager.forceRemoveByName(name).onErrorComplete(error -> {
+            log.debug("Teardown of '{}' skipped: {}", name, error.getMessage());
+            return true;
+        });
     }
 
     private Completable recreate(final ContainerSpec spec) {

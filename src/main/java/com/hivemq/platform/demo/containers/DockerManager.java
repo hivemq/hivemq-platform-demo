@@ -38,6 +38,28 @@ public class DockerManager {
     private final DockerClient dockerClient;
     private final Scheduler ioScheduler;
 
+    public Completable ensureDockerAvailable() {
+        return fromAction(() -> {
+                    try {
+                        dockerClient.pingCmd().exec();
+                    } catch (final RuntimeException cause) {
+                        throw new IllegalStateException(
+                                "Docker is not available — make sure Docker is installed and running, then retry"
+                                        + " (could not reach the Docker daemon: " + rootCauseMessage(cause) + ")");
+                    }
+                })
+                .subscribeOn(ioScheduler);
+    }
+
+    private static String rootCauseMessage(final Throwable error) {
+        var cause = error;
+        while (cause.getCause() != null && cause.getCause() != cause) {
+            cause = cause.getCause();
+        }
+        final var message = cause.getMessage();
+        return message != null ? message : cause.getClass().getSimpleName();
+    }
+
     public Completable ensureNetwork(final String name) {
         return fromAction(() -> {
                     final var exists = dockerClient.listNetworksCmd().withNameFilter(name).exec().stream()

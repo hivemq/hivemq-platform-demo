@@ -94,7 +94,8 @@ The whole pipeline lives in [`Main.java`](src/main/java/com/hivemq/platform/demo
 RxJava chain:
 
 ```
-loopbackServer.obtainToken()                          // Auth0 login -> Oauth2TokenDto
+containersRunner.ensureDockerAvailable()              // preflight: Docker daemon reachable? fail fast
+  .andThen(loopbackServer.obtainToken())              // Auth0 login -> Oauth2TokenDto
   .flatMap(token -> sessionFactory.create(token)      // open a session subcomponent
                       .resourceProvisioner().provision())   // -> ProvisionResult(pulseToken, registrationToken)
   .flatMapCompletable(result ->
@@ -119,6 +120,8 @@ begins only after the previous fully completes.
 1.  Bootstrap
     1.1 build the Dagger ApplicationComponent
     1.2 register JVM shutdown hook "demo-shutdown" (calls containersRunner.teardown() on exit)
+    1.3 preflight — containersRunner.ensureDockerAvailable(): ping the Docker daemon and fail fast
+        with a clear message if it's unreachable, before the user is asked to sign in   [ioScheduler]
 
 2.  Auth — loopbackServer.obtainToken()              [ioScheduler, 1-minute timeout]
     2.1 open a loopback ServerSocket on localhost:8585        (Single.using → closed at the end)
@@ -526,16 +529,18 @@ is no longer wired):
 |---|---|---|
 | `com.hivemq.platform.demo/demo` | baseline: TLS/crypto (`sun.security.*`), SPI resources, ICU/IDN, Retrofit dynamic proxies, **+ the `docker/broker/*` resource globs** | hand-deriving TLS/SPI is a footgun, so keep the agent seed |
 | `com.hivemq.platform.demo/dto` | our DTO + config records | Jackson (de)serialization of our types |
-| `com.github.docker-java/docker-java` | `api.model` + `api.command` + **`core.command`** (477 classes) | docker-java serializes request bodies via these impls |
+| `com.github.docker-java/docker-java` | `api.model` + `api.command` + **`core.command`** + the **`core` config-file classes** (`DockerConfigFile`, `DockerContextMetaFile` + nested) — 481 classes | docker-java serializes request bodies via these impls **and Jackson-deserializes `~/.docker/config.json` + docker context meta files at client build time** |
 
 **Fixing a new `MissingReflectionRegistrationError`:** add the type to the matching `reflect-config.json`
 (`{"name": "...", "allDeclaredConstructors": true, "allDeclaredMethods": true, "allDeclaredFields": true}`)
 and recompile — same loop used for docker-java's `core.command`. New build-context files need both a
 `Constants.Containers.BROKER_BUILD_FILES` entry **and** a resource glob in the `demo` metadata.
 
-> Two native-only bugs already fixed this way: docker-java sending an empty container `config`
-> (missing `core.command` reflection) and the broker build context not being embedded (missing
-> resource globs).
+> Three native-only bugs already fixed this way: docker-java sending an empty container `config`
+> (missing `core.command` reflection), the broker build context not being embedded (missing
+> resource globs), and `DefaultDockerClientConfig.build()` failing to parse `~/.docker/config.json`
+> (missing `core.DockerConfigFile` / `DockerContextMetaFile` reflection — the error this surfaced as
+> `Cannot construct instance of DockerConfigFile … this appears to be a native image`).
 
 ---
 

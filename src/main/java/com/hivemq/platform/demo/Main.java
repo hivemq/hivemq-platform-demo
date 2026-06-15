@@ -32,9 +32,13 @@ public class Main {
         // threads, so main returning would kill everything — and onError releases it on a real failure.
         final var done = new CountDownLatch(1);
 
-        final var subscription = loopbackServer
-                .obtainToken()
-                .doOnSubscribe(_ -> progress.phaseSpinning("Waiting for Auth0 sign-in — complete it in your browser …"))
+        final var subscription = containersRunner
+                .ensureDockerAvailable()
+                .doOnSubscribe(_ -> progress.log("Checking Docker is installed and running …"))
+                .andThen(loopbackServer
+                        .obtainToken()
+                        .doOnSubscribe(_ ->
+                                progress.phaseSpinning("Waiting for Auth0 sign-in — complete it in your browser …")))
                 .flatMap(token -> {
                     progress.phase("Provisioning HiveMQ resources (Pulse + AgentX) …");
                     return applicationComponent
@@ -56,7 +60,6 @@ public class Main {
                 })
                 .subscribe(done::countDown, failure -> {
                     progress.fail("Demo failed: " + failure.getMessage());
-                    log.error("Demo failed", failure);
                     done.countDown();
                 });
 
