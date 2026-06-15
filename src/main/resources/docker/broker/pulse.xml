@@ -1,0 +1,8 @@
+<?xml version="1.0"?>
+<pulse>
+    <enabled>true</enabled>
+    <bootstrap>true</bootstrap>
+    <agent>
+        <connection-string>${ENV:PULSE_TOKEN}</connection-string>
+    </agent>
+</pulse>
