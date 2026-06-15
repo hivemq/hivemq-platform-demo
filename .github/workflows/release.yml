@@ -106,7 +106,7 @@ jobs:
       - name: Assemble release files (binaries + checksums + installer)
         run: |
           mkdir -p dist
-          cp install.sh dist/
+          cp install.sh internal_install.sh dist/
           for f in artifacts/demo-*; do
             name="$(basename "$f")"
             cp "$f" "dist/$name"

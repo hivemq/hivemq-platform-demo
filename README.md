@@ -60,32 +60,31 @@ exits. The only thing written to disk at runtime is the broker's small build con
 
 One line takes a customer from zero to the running demo: it detects their OS/arch, downloads the
 matching prebuilt native binary from the latest GitHub Release, verifies its sha256, and launches
-straight into the Auth0 sign-in. The release artifacts (binaries, `.sha256` checksums, and
-`install.sh`) are published automatically by [`.github/workflows/release.yml`](.github/workflows/release.yml).
+straight into the Auth0 sign-in. Release artifacts (binaries, `.sha256` checksums, and both
+installer scripts) are published automatically by [`.github/workflows/release.yml`](.github/workflows/release.yml).
 
-While the repo is **private** (internal testing), every fetch needs a GitHub PAT — fine-grained,
-scoped to this repo, **Contents: Read-only** (a classic token with `repo` scope also works). The
-token appears **twice**: once to fetch `install.sh` via the Contents API, and once exported into the
-shell (`GH_TOKEN`) so the script can pull the binary. It's ugly on purpose — it goes away when the
-repo is public:
-
-```bash
-curl -fsSL \
-  -H "Authorization: Bearer ghp_xxx" \
-  -H "Accept: application/vnd.github.raw" \
-  https://api.github.com/repos/hivemq/hivemq-platform-demo/contents/install.sh \
-  | GH_TOKEN=ghp_xxx bash
-```
-
-Once the repo is public this collapses to the clean, token-free form:
+**Public repo (the target state) — `install.sh`, no auth:**
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/hivemq/hivemq-platform-demo/main/install.sh | bash
 ```
 
-Overrides (env): `DEMO_VERSION=vX.Y.Z` pins a release (default: latest), `DEMO_REPO` targets a fork.
-Built targets today: **`demo-linux-amd64`** and **`demo-darwin-arm64`**. A running **Docker** daemon
-is required, and login opens a browser (the auth flow is browser+loopback, not stdin).
+**Private repo (internal testing, for now) — `internal_install.sh` via the GitHub CLI.** No token to
+embed: `gh` carries the auth. Install it from <https://cli.github.com> and run `gh auth login` once
+(with read access to the repo). The bootstrap one-liner pulls the internal script from the private
+repo with `gh`, and the script then uses `gh release download` for the binary:
+
+```bash
+gh api repos/hivemq/hivemq-platform-demo/contents/internal_install.sh \
+  -H "Accept: application/vnd.github.raw" | bash
+```
+
+`internal_install.sh` exists **only while the repo is private**; when it goes public it's deleted and
+`install.sh` becomes the single entry point.
+
+Overrides (env, both scripts): `DEMO_VERSION=vX.Y.Z` pins a release (default: latest), `DEMO_REPO`
+targets a fork. Built targets today: **`demo-linux-amd64`** and **`demo-darwin-arm64`**. A running
+**Docker** daemon is required, and login opens a browser (the auth flow is browser+loopback, not stdin).
 
 ---
 
@@ -584,18 +583,19 @@ Tracked in detail in the session memory; summary:
    - `application.yaml` `auth0.domain`, `auth0.client-id`, and the `fallback.*` Pulse/AgentX URLs.
    - Deploy a **prod Auth0 app** with the same Action (injecting `orgs` and the
      `https://hmqc.cloud.email` claim) and use its client id.
-   - **Make the repo public** so `install.sh` can drop the PAT and use the clean raw-URL one-liner
-     (see [Install](#install)); until then the token is embedded in the command.
+   - **Make the repo public**, then **delete `internal_install.sh`** (the interim `gh`-based
+     installer); `install.sh` becomes the single, auth-free entry point (see [Install](#install)).
 2. **Make the email claim configurable** — `Constants.Jwt.EMAIL = "https://hmqc.cloud.email"` is a
    hardcoded namespaced key. Move it to `application.yaml` (`auth0.email-claim`) and fall back to the
    standard `email` claim, so a different prod namespace doesn't silently yield an empty
    `ALERT_RECIPIENT` (the `Email: (...)` provisioning log exposes it today).
 3. **Release pipeline — done.** [`.github/workflows/release.yml`](.github/workflows/release.yml)
    tags each `main` change via axion-release, builds `demo-linux-amd64` + `demo-darwin-arm64` (per-OS
-   runners, since native images can't be cross-compiled), and publishes binaries, `.sha256`
-   checksums, and `install.sh`. `install.sh` resolves the asset via the GitHub API, verifies the
-   checksum, and supports a `DEMO_VERSION` pin. Remaining: add `arm64` Linux / `amd64` macOS targets
-   if needed.
+   runners, since native images can't be cross-compiled), and publishes the binaries, `.sha256`
+   checksums, and both installer scripts. `install.sh` (public) downloads from the release's public
+   URL; `internal_install.sh` (interim) downloads via the `gh` CLI while the repo is private. Both
+   verify the checksum and support a `DEMO_VERSION` pin. Remaining: add `arm64` Linux / `amd64` macOS
+   targets if needed.
 4. **MQTT publisher native pass** — `nativeCompile` in CI may surface Netty metadata gaps from the
    MQTT client; resolve via the hand-metadata loop above.
 ```
