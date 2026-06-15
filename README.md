@@ -86,6 +86,17 @@ Overrides (env, both scripts): `DEMO_VERSION=vX.Y.Z` pins a release (default: la
 targets a fork. Built targets today: **`demo-linux-amd64`** and **`demo-darwin-arm64`**. A running
 **Docker** daemon is required, and login opens a browser (the auth flow is browser+loopback, not stdin).
 
+**Required secret — `SENDGRID_API_KEY`.** The alert agent emails via SendGrid, so the demo reads this
+key from the environment (it's no longer baked into the binary) and forwards it to the agent. Export
+it before running so the binary inherits it:
+
+```bash
+export SENDGRID_API_KEY=SG.xxxxx
+# then run the one-liner above (or, inline:  … | SENDGRID_API_KEY=SG.xxxxx bash)
+```
+
+If it's unset, the run stops with a clear message during provisioning.
+
 ---
 
 ## End-to-end flow
@@ -159,7 +170,7 @@ begins only after the previous fully completes.
 5.  Containers — containersRunner.run(brokerEnv={PULSE_TOKEN},
                                       orchestratorEnv={HIVEMQ_AGENTIC_REGISTRATION_TOKEN})
     5.1 Phase 1                                                            [PARALLEL]
-        ( a: ensure Docker network "hivemq"
+        ( a: ensure Docker network "hivemq-agentic-bus"  (the orchestrator's hardcoded agent network)
         & b: build broker image (from docker/broker, extends hivemq/hivemq4)
         & c: pull orchestrator image )
     5.2 Phase 2                                                            [PARALLEL]
@@ -182,8 +193,8 @@ begins only after the previous fully completes.
 ```
 
 > To change ordering, point at the step number: e.g. "make 5.2 sequential (broker before
-> orchestrator)" or "move B4 out of the AgentX arm". Steps 4, 5.1, 5.2, and 8.1 are the parallel
-> joins; everything else is strict sequence.
+> orchestrator)". Steps 4, 5.1, 5.2, and 8.1 are the parallel joins; everything else is strict
+> sequence.
 
 **Classes referenced above** (the `Class#method` names above live here — click through for the
 exact code):
@@ -351,7 +362,8 @@ The orchestrator agent is created from template `00000000-0000-4000-a000-0000000
 | Var | Value |
 |---|---|
 | `ALERT_RECIPIENT` | the logged-in user's email (`claims.email()`) |
-| `FACTORY_BROKER_URL` | `mqtt://broker:1883` (the broker's in-network address) |
+| `FACTORY_BROKER_URL` | `mqtt://hivemq-broker:1883` (the broker's in-network address) |
+| `SENDGRID_API_KEY` | forwarded from the demo's own `SENDGRID_API_KEY` env var (required; not committed) |
 
 `ProvisionResult(pulseToken, registrationToken)` feeds the container env in the next step.
 
@@ -364,7 +376,7 @@ wraps docker-java calls in RxJava on the io scheduler. The flow is two parallel 
 separate virtual threads and fail fast):
 
 ```
-Phase 1 (mergeArray):  ensure network "hivemq"  ||  build broker image  ||  pull orchestrator image
+Phase 1 (mergeArray):  ensure network "hivemq-agentic-bus"  ||  build broker image  ||  pull orchestrator image
 Phase 2 (mergeArray):  [recreate broker      -> wait broker healthy]
                     || [recreate orchestrator -> wait orchestrator healthy]
 ```
@@ -378,11 +390,20 @@ Phase 2 (mergeArray):  [recreate broker      -> wait broker healthy]
 - **Broker** — image **built at runtime** from [`docker/broker`](src/main/resources/docker/broker):
   `Dockerfile` extends `hivemq/hivemq4:latest` and copies `pulse.xml` (which reads
   `${ENV:PULSE_TOKEN}`). Uses image defaults otherwise (Control Center `admin`/`hivemq`, ports
-  **1883** MQTT + **8080** Control Center, both published to the host). Network alias `broker`.
-  Env: `PULSE_TOKEN`. Health: TCP check on 1883.
+  **1883** MQTT + **8080** Control Center, both published to the host). Reachable in-network by its
+  container name `hivemq-broker`. Env: `PULSE_TOKEN`. Health: TCP check on 1883.
 - **Orchestrator** — pulled image, mounts `/var/run/docker.sock`, env `CONTROL_PLANE_URL` +
-  `AGENT_BUS_BROKER_URL` (`mqtt://broker:1883`) + `HIVEMQ_AGENTIC_REGISTRATION_TOKEN`. Health:
+  `AGENT_BUS_BROKER_URL` (`mqtt://hivemq-broker:1883`) + `HIVEMQ_AGENTIC_REGISTRATION_TOKEN`. Health:
   HTTP `/health` on port 3000.
+
+> **Why the network is `hivemq-agentic-bus`.** The orchestrator deploys agents by `docker run`-ing
+> them on the **host daemon** (siblings, via the mounted socket) onto a network it creates internally
+> with a **hardcoded name, `hivemq-agentic-bus`** — and this isn't configurable. A sibling container
+> on a *different* network can't resolve `hivemq-broker`. So we put **our** broker + orchestrator on
+> that same network (`NETWORK_NAME = "hivemq-agentic-bus"`, ensured in Phase 1): all three — broker,
+> orchestrator, and every spawned agent — share one network, and `hivemq-broker:1883` resolves for
+> the agent. This **couples the demo to an undocumented orchestrator internal** (a future image
+> renaming the network would silently break the data path); tracked in [Pre-production TODOs](#pre-production-todos).
 
 Re-runs are idempotent (force-remove by name + recreate). `restartUnlessStopped=false` so the
 containers don't outlive the JVM; teardown force-removes both on `Ctrl+C`.
@@ -392,67 +413,43 @@ containers don't outlive the JVM; teardown force-removes both on `Ctrl+C`.
 
 #### MQTT broker connectivity (troubleshooting)
 
-> ⚠️ The following is the current **working understanding** and is **not yet verified end-to-end** —
-> confirm before relying on it. It explains why the parallel container start (above) is safe and
-> what to check if the broker path misbehaves.
+> ✅ **Verified end-to-end** — a run produces SendGrid alert emails, confirming the full path
+> `MockDataPublisher → broker → agent → email`. This section explains why the parallel container
+> start is safe and what to check if the broker path misbehaves.
 
 There are **two distinct broker references** — don't conflate them:
 
-- **`AGENT_BUS_BROKER_URL`** (`mqtt://broker:1883`, on the **orchestrator**) — the *agent bus* for
-  **inter-agent** MQTT messaging. Belief: the orchestrator does **not** dial this at startup; it
-  only connects when a deployed agent actually needs to talk to *other* agents.
-- **`FACTORY_BROKER_URL`** (`mqtt://broker:1883`, on the deployed **agent**) — where the Demo Sensor
-  Evaluation agent is expected to read the `factory/sensor/#` data that `MockDataPublisher` produces.
+- **`AGENT_BUS_BROKER_URL`** (`mqtt://hivemq-broker:1883`, on the **orchestrator**) — the *agent bus* for
+  **inter-agent** MQTT messaging. The orchestrator does **not** dial this at startup; it only connects
+  when a deployed agent needs to talk to *other* agents.
+- **`FACTORY_BROKER_URL`** (`mqtt://hivemq-broker:1883`, on the deployed **agent**) — where the Demo Sensor
+  Evaluation agent reads the `factory/sensor/#` data that `MockDataPublisher` produces. **This is the
+  essential conduit** (confirmed: no data here ⇒ no anomaly emails), so the broker and the local
+  publish path are load-bearing, not redundant.
 
 Implications:
 - **Parallel start is safe** because the orchestrator opens no MQTT connection at boot — there's
   nothing to "wait for the broker" for. And the agent we deploy runs **solo** (no peer agents), so
-  `AGENT_BUS_BROKER_URL` is effectively **unused** for this demo.
-- **Open question to confirm:** does the solo agent actually read sensor data from the broker via
-  `FACTORY_BROKER_URL`? If **yes**, the broker is the essential conduit
-  (`MockDataPublisher → broker → agent`) and these configs matter. If the agent ingests data some
-  other way, then the broker — and possibly the whole local publish path — is **redundant** for this
-  demo and could be simplified.
+  `AGENT_BUS_BROKER_URL` is effectively **unused** for this demo; only `FACTORY_BROKER_URL` matters.
+- **All three containers share the `hivemq-agentic-bus` network** (see "Why the network is
+  `hivemq-agentic-bus`" above), which is what lets the agent resolve `hivemq-broker` and read the
+  factory data.
 
 Troubleshooting cues:
 - Orchestrator wedged at startup complaining about the broker → the "no startup connection"
   assumption is wrong; re-add broker-first ordering in `ContainersRunner.run()` (gate the
   orchestrator arm on broker health instead of running both in one `mergeArray`).
 - Agent never flags anomalies even though `MockDataPublisher` logs them → the agent isn't receiving
-  the data; check `FACTORY_BROKER_URL`, that `broker:1883` resolves inside the `hivemq` Docker
-  network, and that the agent subscribes to `factory/sensor/#`.
-
-**Candidate reordering — defer B4 until the containers are healthy (if a readiness issue appears):**
-Today **B4** (`ensure orchestrator agent`, step 4) runs during cloud provisioning, **before any
-container exists**. B4 is the step where the agent is created and (likely) deployed onto the
-orchestrator — i.e. the moment the agent first actually needs the broker. If creating the agent
-that early causes it to be deployed/activated against a broker that isn't up yet, the fix is to
-**move B4 out of the AgentX provisioning arm and run it after step 5 (both containers healthy),
-right before step 6 (publishing).** New order:
-
-```
-4. provision: A1–A3 (Pulse) ‖ B1–B3 (AgentX, stops at the enrollment token)
-5. containers: broker ‖ orchestrator → both healthy
-   B4. ensure orchestrator agent  (deploys onto the now-healthy orchestrator + reachable broker)
-6. publish sensor data
-```
-
-Notes / constraints:
-- **B3 must stay in step 4** — its enrollment token is the `HIVEMQ_AGENTIC_REGISTRATION_TOKEN` the
-  orchestrator container needs at step 5. Only **B4** moves.
-- B4 only needs the **`orchestratorId`** from B2 (it's a cloud call: `POST
-  api/v1/orchestrators/{orchestratorId}/agents`), so deferring it just means carrying that id forward
-  past step 5 — it does not need the container to make the call, only for the resulting agent to land
-  on a ready orchestrator.
-- This is **unverified** — only worth doing if B4-at-provisioning-time actually races the broker.
-  Confirm the agent's real broker dependency first (see the open question above).
+  the data; check `FACTORY_BROKER_URL`, that `hivemq-broker:1883` resolves inside the shared
+  `hivemq-agentic-bus` network (it's the broker's **container name** — the reliable in-network
+  address), and that the agent subscribes to `factory/sensor/#`.
 
 ### 5. Mock sensor data
 
 [`MockDataPublisher.publish()`](src/main/java/com/hivemq/platform/demo/mqtt/MockDataPublisher.java)
 uses `Completable.using(connect, stream, disconnect)` — the connection is the managed resource, so
 `disconnect()` only runs if `connect()` succeeded. It connects the **blocking** HiveMQ client to
-`localhost:1883` (host-published port) and, every **3 s**, publishes one reading per sensor:
+`localhost:1883` (host-published port) and, every **1 s**, publishes one reading per sensor:
 
 | Sensor | Topic | Mean ± stddev | Unit |
 |---|---|---|---|
@@ -461,10 +458,14 @@ uses `Completable.using(connect, stream, disconnect)` — the connection is the 
 | vibration | `factory/sensor/vibration` | 0.5 ± 0.08 | mm/s |
 
 Payload: `{"value": <rounded 3dp>, "unit": "...", "ts": <epoch-ms>}` (QoS 0). Values are a Gaussian
-baseline; after **60 cycles**, each sample has a **5 %** chance of an **anomaly** (±30 % of the mean
-+ noise) so the agent's ±20 %-of-rolling-mean rule trips. These numbers exactly replicate the
-reference `demo-sensor-publisher.py` and are **tuned to the template** — don't relax them. The
-stream is pinned to the io scheduler so the blocking publishes run on virtual threads.
+baseline; after **60 cycles**, each sample has a **1 %** chance (`Constants.Mqtt.ANOMALY_RATE`) of an
+**anomaly** (±30 % of the mean + noise) so the agent's ±20 %-of-rolling-mean rule trips. The ±30 %
+**magnitude** and 60-cycle **warm-up** replicate the reference `demo-sensor-publisher.py` and are
+**tuned to the template — don't relax them**; the anomaly **rate** is a tunable demo knob. Each
+anomaly trips the agent's rule and sends **one alert email**, so the rate directly sets email volume
+(≈ `rate × 60 × 3` per minute — **1 % ≈ 1–2 emails/min**); lower it for a calmer inbox, raise it for a
+busier demo (≲15 %, to keep anomalies a minority of the rolling mean). The stream is pinned to the io
+scheduler so the blocking publishes run on virtual threads.
 
 ---
 
@@ -584,23 +585,36 @@ and recompile — same loop used for docker-java's `core.command`. New build-con
 
 Tracked in detail in the session memory; summary:
 
-1. **Production cutover** — everything is staging. Switch together:
+1. **⚠️ Rotate/revoke the previously-committed SendGrid key.** The hardcoded key is **externalized**
+   — it's now read from the `SENDGRID_API_KEY` env var (`SessionNetworkModule#sendgridApiKey`,
+   required) and the constant is gone. **But the old key was committed**, so it lives in git history
+   forever: treat it as compromised and **revoke/rotate it in SendGrid** — removing it from the
+   working tree does not un-leak it. (Optional follow-up: scrub it from history with
+   `git filter-repo`/BFG, though revocation is what actually closes the exposure.)
+2. **Production cutover** — everything is staging. Switch together:
    - `application.yaml` `auth0.domain`, `auth0.client-id`, and the `fallback.*` Pulse/AgentX URLs.
    - Deploy a **prod Auth0 app** with the same Action (injecting `orgs` and the
      `https://hmqc.cloud.email` claim) and use its client id.
    - **Make the repo public**, then **delete `internal_install.sh`** (the interim `gh`-based
      installer); `install.sh` becomes the single, auth-free entry point (see [Install](#install)).
-2. **Make the email claim configurable** — `Constants.Jwt.EMAIL = "https://hmqc.cloud.email"` is a
+3. **Make the email claim configurable** — `Constants.Jwt.EMAIL = "https://hmqc.cloud.email"` is a
    hardcoded namespaced key. Move it to `application.yaml` (`auth0.email-claim`) and fall back to the
    standard `email` claim, so a different prod namespace doesn't silently yield an empty
    `ALERT_RECIPIENT` (the `Email: (...)` provisioning log exposes it today).
-3. **Release pipeline — done.** [`.github/workflows/release.yml`](.github/workflows/release.yml)
+4. **De-risk the orchestrator network coupling** — the demo runs broker + orchestrator + agents on
+   `hivemq-agentic-bus`, the orchestrator's **hardcoded, undocumented internal** agent network
+   (`Constants.Containers.NETWORK_NAME`), because the orchestrator isn't configurable and spawns its
+   agent containers there. A future orchestrator image that renames that network would **silently
+   break the data path** (agents can't resolve `hivemq-broker`, no anomaly emails). De-risk when the
+   orchestrator exposes a network setting (then configure it explicitly), and/or pin the orchestrator
+   image to a known-good tag instead of `:latest` so the internal name can't shift unnoticed.
+5. **Release pipeline — done.** [`.github/workflows/release.yml`](.github/workflows/release.yml)
    tags each `main` change via axion-release, builds `demo-linux-amd64` + `demo-darwin-arm64` (per-OS
    runners, since native images can't be cross-compiled), and publishes the binaries, `.sha256`
    checksums, and both installer scripts. `install.sh` (public) downloads from the release's public
    URL; `internal_install.sh` (interim) downloads via the `gh` CLI while the repo is private. Both
    verify the checksum and support a `DEMO_VERSION` pin. Remaining: add `arm64` Linux / `amd64` macOS
    targets if needed.
-4. **MQTT publisher native pass** — `nativeCompile` in CI may surface Netty metadata gaps from the
+6. **MQTT publisher native pass** — `nativeCompile` in CI may surface Netty metadata gaps from the
    MQTT client; resolve via the hand-metadata loop above.
 ```

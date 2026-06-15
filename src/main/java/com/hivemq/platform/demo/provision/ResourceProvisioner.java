@@ -20,6 +20,7 @@ public class ResourceProvisioner {
     private final PulseApi pulse;
     private final AgentxApi agentx;
     private final JwtClaimsDto claims;
+    private final String sendgridApiKey;
 
     public Single<ProvisionResult> provision() {
         return zip(pulseToken(), agentxToken(), ProvisionResult::from);
@@ -80,10 +81,9 @@ public class ResourceProvisioner {
                 .map(OrchestratorAgentListEnvelopeDto::dataOrEmpty)
                 .flatMap(agents -> {
                     final var environment = Map.of(
-                            ORCHESTRATOR_AGENT_ENV_ALERT_RECIPIENT,
-                            claims.email(),
-                            ORCHESTRATOR_AGENT_ENV_FACTORY_BROKER_URL,
-                            AGENT_BUS_BROKER_URL);
+                            ORCHESTRATOR_AGENT_ENV_ALERT_RECIPIENT, claims.email(),
+                            ORCHESTRATOR_AGENT_ENV_FACTORY_BROKER_URL, AGENT_BUS_BROKER_URL,
+                            ORCHESTRATOR_AGENT_ENV_SENDGRID_API_KEY, sendgridApiKey);
 
                     final var dto = new CreateOrchestratorAgentRequestDto(
                             ORCHESTRATOR_AGENT_TEMPLATE_ID, ORCHESTRATOR_AGENT_VERSION, environment);

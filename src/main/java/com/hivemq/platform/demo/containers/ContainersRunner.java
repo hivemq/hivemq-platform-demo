@@ -88,7 +88,7 @@ public class ContainersRunner {
                 BROKER_CONTAINER_NAME,
                 BROKER_IMAGE_TAG,
                 NETWORK_NAME,
-                List.of(BROKER_NETWORK_ALIAS),
+                List.of(),
                 Map.of(),
                 List.of(
                         new PortBinding(BROKER_MQTT_PORT, BROKER_MQTT_PORT),

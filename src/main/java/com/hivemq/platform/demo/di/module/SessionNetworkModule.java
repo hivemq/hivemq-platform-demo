@@ -1,5 +1,6 @@
 package com.hivemq.platform.demo.di.module;
 
+import static com.hivemq.platform.demo.constants.Constants.Provisioning.ORCHESTRATOR_AGENT_ENV_SENDGRID_API_KEY;
 import static com.hivemq.platform.demo.utils.JwtUtils.decodeClaims;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -106,6 +107,15 @@ public class SessionNetworkModule {
     @Provides
     @SessionScope
     ResourceProvisioner resourceProvisioner(PulseApi pulseApi, AgentxApi agentxApi, JwtClaimsDto claims) {
-        return new ResourceProvisioner(pulseApi, agentxApi, claims);
+        return new ResourceProvisioner(pulseApi, agentxApi, claims, sendgridApiKey());
+    }
+
+    private static String sendgridApiKey() {
+        final var key = System.getenv(ORCHESTRATOR_AGENT_ENV_SENDGRID_API_KEY);
+        if (key == null || key.isBlank()) {
+            throw new IllegalStateException("%s is not set — export your SendGrid API key before running the demo."
+                    .formatted(ORCHESTRATOR_AGENT_ENV_SENDGRID_API_KEY));
+        }
+        return key;
     }
 }

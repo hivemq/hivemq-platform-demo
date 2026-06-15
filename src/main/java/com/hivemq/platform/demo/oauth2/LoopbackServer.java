@@ -38,7 +38,7 @@ public class LoopbackServer {
 
     public Single<Oauth2TokenDto> obtainToken() {
         return using(createServer(), this::obtainToken, terminateServer())
-                .timeout(1, MINUTES)
+                .timeout(3, MINUTES)
                 .subscribeOn(ioScheduler);
     }
 

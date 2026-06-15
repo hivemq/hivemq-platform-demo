@@ -31,10 +31,14 @@ public interface Constants {
 
     interface Containers {
 
-        String NETWORK_NAME = "hivemq";
+        // The orchestrator spawns agent containers (as host-daemon siblings, via the mounted socket)
+        // onto this network, which it creates internally with a HARDCODED name. We put the broker +
+        // orchestrator on the SAME network so agents resolve the broker by container name
+        // (hivemq-broker). This couples us to an undocumented orchestrator implementation detail — if a
+        // future orchestrator image renames it, agents lose the broker. See Pre-production TODOs.
+        String NETWORK_NAME = "hivemq-agentic-bus";
 
         String BROKER_CONTAINER_NAME = "hivemq-broker";
-        String BROKER_NETWORK_ALIAS = "broker";
         String BROKER_IMAGE_TAG = "hivemq-demo-broker:local";
         String BROKER_BUILD_RESOURCE_DIR = "docker/broker";
         List<String> BROKER_BUILD_FILES = List.of("Dockerfile", "pulse.xml");
@@ -54,7 +58,7 @@ public interface Constants {
         Duration BROKER_HEALTHCHECK_START_PERIOD = Duration.ofSeconds(60);
 
         Duration HEALTH_INTERVAL = Duration.ofSeconds(3);
-        Duration HEALTH_TIMEOUT = Duration.ofSeconds(240);
+        Duration HEALTH_TIMEOUT = Duration.ofSeconds(60);
         String HEALTH_STATUS_HEALTHY = "healthy";
 
         String ORCHESTRATOR_CONTAINER_NAME = "hivemq-agentic-orch-demo";
@@ -64,7 +68,7 @@ public interface Constants {
         String ENV_CONTROL_PLANE_URL = "CONTROL_PLANE_URL";
         String ENV_AGENT_BUS_BROKER_URL = "AGENT_BUS_BROKER_URL";
         String CONTROL_PLANE_URL = "https://staging.act.hivemq.com";
-        String AGENT_BUS_BROKER_URL = "mqtt://broker:1883";
+        String AGENT_BUS_BROKER_URL = "mqtt://hivemq-broker:1883";
 
         // orchestrator exposes /health on port 3000 (the image ships an equivalent check; this polls
         // faster)
@@ -84,9 +88,14 @@ public interface Constants {
         String TOPIC_PREFIX = "factory/sensor";
         Long PUBLISH_INTERVAL_MILLIS = 1000L;
 
-        // anomaly behaviour — tuned to the marketplace template's rolling-window rule; do not relax
+        // anomaly behaviour — tuned to the marketplace template's rolling-window rule.
+        // ANOMALY_AFTER (warm-up) and ANOMALY_FACTOR (>20% magnitude, so each anomaly trips the rule)
+        // must not be relaxed. ANOMALY_RATE is a demo knob (per-sensor, per-tick chance): each anomaly
+        // trips the agent's rule and sends ONE alert email, so this directly sets email volume
+        // (≈ rate × 60 × #sensors per minute → 0.01 ≈ 1-2/min). Lower it for a calmer inbox; raising it
+        // is fine up to ≲0.15, beyond which frequent anomalies pollute the detector's rolling mean.
         Integer ANOMALY_AFTER = 60;
-        Double ANOMALY_RATE = 0.05;
+        Double ANOMALY_RATE = 0.01;
         Double ANOMALY_FACTOR = 1.30;
 
         String CLIENT_ID_PREFIX = "demo-sensor-publisher-";
@@ -103,6 +112,7 @@ public interface Constants {
 
         // environment passed to the orchestrator agent on creation (template-specific keys)
         String ORCHESTRATOR_AGENT_ENV_ALERT_RECIPIENT = "ALERT_RECIPIENT";
+        String ORCHESTRATOR_AGENT_ENV_SENDGRID_API_KEY = "SENDGRID_API_KEY";
         String ORCHESTRATOR_AGENT_ENV_FACTORY_BROKER_URL = "FACTORY_BROKER_URL";
 
         String PULSE_AGENT_INFRASTRUCTURE_TYPE = "ENTERPRISE";
