@@ -8,7 +8,6 @@ import dagger.Provides;
 @Module
 public class ConsoleModule {
 
-    // counted phases: sign-in, provisioning, containers (publishing is the final steady state)
     private static final int TOTAL_PHASES = 3;
 
     @Provides

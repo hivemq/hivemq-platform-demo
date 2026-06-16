@@ -8,3 +8,4 @@ fallback:
   org-id: "dummy"
   pulse-base-url: "https://pulse2.dev.hmqc.dev"
   agentx-base-url: "https://staging.act.hivemq.com"
+  console-base-url: "https://api.console.staging.hmqc.dev"

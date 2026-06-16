@@ -67,8 +67,11 @@ public interface Constants {
 
         String ENV_CONTROL_PLANE_URL = "CONTROL_PLANE_URL";
         String ENV_AGENT_BUS_BROKER_URL = "AGENT_BUS_BROKER_URL";
+        String ENV_HIVEMQ_AGENTIC_BUS_NETWORK_NAME_SUFFIXED = "HIVEMQ_AGENTIC_BUS_NETWORK_NAME_SUFFIXED";
+
         String CONTROL_PLANE_URL = "https://staging.act.hivemq.com";
         String AGENT_BUS_BROKER_URL = "mqtt://hivemq-broker:1883";
+        String AGENTIC_BUS_NETWORK_NAME_SUFFIXED = "false";
 
         // orchestrator exposes /health on port 3000 (the image ships an equivalent check; this polls
         // faster)

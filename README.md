@@ -86,16 +86,10 @@ Overrides (env, both scripts): `DEMO_VERSION=vX.Y.Z` pins a release (default: la
 targets a fork. Built targets today: **`demo-linux-amd64`** and **`demo-darwin-arm64`**. A running
 **Docker** daemon is required, and login opens a browser (the auth flow is browser+loopback, not stdin).
 
-**Required secret — `SENDGRID_API_KEY`.** The alert agent emails via SendGrid, so the demo reads this
-key from the environment (it's no longer baked into the binary) and forwards it to the agent. Export
-it before running so the binary inherits it:
-
-```bash
-export SENDGRID_API_KEY=SG.xxxxx
-# then run the one-liner above (or, inline:  … | SENDGRID_API_KEY=SG.xxxxx bash)
-```
-
-If it's unset, the run stops with a clear message during provisioning.
+**SendGrid key — fetched at runtime.** The alert agent emails via SendGrid. The demo no longer reads
+the key from the environment or bakes it into the binary; it fetches it during provisioning from the
+Console API (`GET /api/v3/user-config`, authenticated with the same JWT) and forwards it to the agent.
+Nothing to export.
 
 ---
 
@@ -146,8 +140,10 @@ begins only after the previous fully completes.
 3.  Open session — sessionFactory.create(token)
     3.1 decode the access-token claims → JwtClaimsDto (orgId, email, pulseBaseUrl, agentxBaseUrl)
     3.2 build the authenticated Pulse/AgentX Retrofit clients (per-product base URLs from the JWT)
-        (every API call adds "Authorization: Bearer <accessToken>"; a 401 triggers TokenAuthenticator
-         → POST /oauth/token grant_type=refresh_token, then retries the original call)
+        (every API call adds "Authorization: Bearer <accessToken>" via SessionManager.token(), which
+         refreshes proactively when the token is within ~30s of expiry — POST /oauth/token
+         grant_type=refresh_token, single-flight; TokenAuthenticator is the 401 fallback that asks for
+         a fresh token and retries once)
 
 4.  Provision — ResourceProvisioner#provision = zip(PULSE, AGENTX)       [both arms PARALLEL]
     Each "ensure" is find-or-create (list → first if present, else create); see the linked
@@ -249,7 +245,7 @@ src/main/java/com/hivemq/platform/demo/
 │   └── SessionManager.java    # session-scoped mutable token holder; refreshes via Auth0Client
 ├── okhttp/
 │   ├── AuthorizationInterceptor.java  # adds "Authorization: Bearer <accessToken>"
-│   ├── TokenAuthenticator.java        # refreshes the token on a 401 and retries
+│   ├── TokenAuthenticator.java        # 401 fallback: asks SessionManager for a fresh token, retries once
 │   └── LoggingInterceptor.java        # concise request/response logging
 ├── domain/
 │   ├── network/{PulseApi,AgentxApi}.java   # Retrofit interfaces (paths include /api/v1)
@@ -324,8 +320,11 @@ uses `Single.using(ServerSocket, …, close)` to manage a one-shot loopback HTTP
 redirect URI. Dynamic ports or `127.0.0.1` fail with "Callback URL mismatch", so the port/host are
 constants, not ephemeral. A 1-minute `timeout` aborts a stalled login.
 
-After login, `SessionManager` holds the mutable token; `AuthorizationInterceptor` attaches the
-bearer to every API call and `TokenAuthenticator` transparently refreshes on a 401.
+After login, `SessionManager.token()` always hands back a non-stale token — a lock-free read until
+the token nears expiry, then a single-flight refresh under a lock (double-checked, so concurrent
+callers coalesce). `AuthorizationInterceptor` calls it to attach the bearer to every API call (so
+refreshes happen proactively, before a 401), and `TokenAuthenticator` is the 401 fallback that asks
+for a fresh token and retries once.
 
 ### 2. JWT claims
 
@@ -363,9 +362,9 @@ The orchestrator agent is created from template `00000000-0000-4000-a000-0000000
 |---|---|
 | `ALERT_RECIPIENT` | the logged-in user's email (`claims.email()`) |
 | `FACTORY_BROKER_URL` | `mqtt://hivemq-broker:1883` (the broker's in-network address) |
-| `SENDGRID_API_KEY` | forwarded from the demo's own `SENDGRID_API_KEY` env var (required; not committed) |
+| `SENDGRID_API_KEY` | fetched from the Console API (`GET /api/v3/user-config` → `sendGridKey`) and forwarded |
 
-`ProvisionResult(pulseToken, registrationToken)` feeds the container env in the next step.
+`ProvisionResult(pulseToken, registrationToken, sendGridKey)` feeds the container env in the next step.
 
 ### 4. Containers
 
@@ -565,14 +564,24 @@ and recompile — same loop used for docker-java's `core.command`. New build-con
   independently and only Pulse is customized.
 - **palantir-java-format** (over google-java-format) — GJF is zero-config and broke fluent/lambda
   chains aggressively; palantir keeps them compact (4-space indent, wider lines).
-- **No Javadoc** on methods/classes by request — code reads top-to-bottom; comments only for
-  non-obvious *why*.
+- **No comments** by request — no Javadoc and no inline `//` comments; code reads top-to-bottom via
+  naming and structure. Comments are added only when explicitly requested.
 
 ---
 
 ## Conventions
 
-- **No Javadoc.** Short `//` comments only where the *why* isn't obvious.
+- **No comments.** No Javadoc and no inline `//` comments — names and structure carry the intent.
+  Add comments only when explicitly requested.
+- **Always update the native-image metadata after a change.** A change that compiles and runs on the
+  JVM can still break the native binary at runtime (`MissingReflectionRegistrationError`). After any
+  change, make sure the wiring under `src/main/resources/META-INF/native-image/` is applied:
+  - **New API interface** (Retrofit) → register its **dynamic proxy** in `demo/reachability-metadata.json`
+    (`{"type": {"proxy": ["...Api"]}}`), alongside `PulseApi`/`AgentxApi`/`ConsoleApi`.
+  - **New/changed DTO or config record** → add/update its entry in `dto/reflect-config.json`
+    (`allDeclaredConstructors`/`Methods`/`Fields: true`) so Jackson can (de)serialize it.
+  - **New embedded resource** → add a resource glob in `demo/reachability-metadata.json`.
+  Verify with `./gradlew nativeCompile` and a smoke run — not just `compileJava`. See [Native image](#native-image).
 - **Lombok** `@RequiredArgsConstructor` + `@Slf4j`; constructor-injected `final` fields.
 - **Constants** centralize tunables in `Constants.java` (nested interfaces by area).
 - **Logging** via SLF4J; concise network logging in `LoggingInterceptor`; virtual threads are named
@@ -585,12 +594,12 @@ and recompile — same loop used for docker-java's `core.command`. New build-con
 
 Tracked in detail in the session memory; summary:
 
-1. **⚠️ Rotate/revoke the previously-committed SendGrid key.** The hardcoded key is **externalized**
-   — it's now read from the `SENDGRID_API_KEY` env var (`SessionNetworkModule#sendgridApiKey`,
-   required) and the constant is gone. **But the old key was committed**, so it lives in git history
-   forever: treat it as compromised and **revoke/rotate it in SendGrid** — removing it from the
-   working tree does not un-leak it. (Optional follow-up: scrub it from history with
-   `git filter-repo`/BFG, though revocation is what actually closes the exposure.)
+1. **⚠️ Rotate/revoke the previously-committed SendGrid key.** The key is no longer in the code at
+   all — it's fetched at runtime from the Console API (`ConsoleApi#getUserConfig` →
+   `UserConfigDto.sendGridKey`) and the constant/env-var path are both gone. **But the old key was
+   committed**, so it lives in git history forever: treat it as compromised and **revoke/rotate it in
+   SendGrid** — removing it from the working tree does not un-leak it. (Optional follow-up: scrub it
+   from history with `git filter-repo`/BFG, though revocation is what actually closes the exposure.)
 2. **Production cutover** — everything is staging. Switch together:
    - `application.yaml` `auth0.domain`, `auth0.client-id`, and the `fallback.*` Pulse/AgentX URLs.
    - Deploy a **prod Auth0 app** with the same Action (injecting `orgs` and the

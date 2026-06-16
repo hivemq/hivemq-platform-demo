@@ -24,16 +24,16 @@ public class JacksonModule {
                 .setPropertyNamingStrategy(PropertyNamingStrategies.SNAKE_CASE);
     }
 
+    @Yaml
     @Provides
     @ApplicationScope
-    @Yaml
     ObjectMapper yamlMapper(ObjectMapper objectMapper) {
         return objectMapper.copyWith(new YAMLFactory()).setPropertyNamingStrategy(PropertyNamingStrategies.KEBAB_CASE);
     }
 
+    @Toml
     @Provides
     @ApplicationScope
-    @Toml
     ObjectMapper tomlMapper(ObjectMapper objectMapper) {
         return objectMapper.copyWith(new TomlFactory()).setPropertyNamingStrategy(PropertyNamingStrategies.KEBAB_CASE);
     }

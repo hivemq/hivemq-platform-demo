@@ -5,6 +5,7 @@ import java.util.concurrent.TimeUnit;
 import lombok.extern.slf4j.Slf4j;
 import okhttp3.Interceptor;
 import okhttp3.Response;
+import org.jspecify.annotations.NonNull;
 
 @Slf4j
 public class LoggingInterceptor implements Interceptor {
@@ -12,7 +13,7 @@ public class LoggingInterceptor implements Interceptor {
     private static final long MAX_ERROR_BODY_BYTES = 64 * 1024;
 
     @Override
-    public Response intercept(final Chain chain) throws IOException {
+    public @NonNull Response intercept(final Chain chain) throws IOException {
         final var request = chain.request();
         log.debug("--> {} {}", request.method(), request.url());
 

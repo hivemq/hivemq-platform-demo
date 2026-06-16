@@ -56,7 +56,17 @@ public class LoopbackServer {
             final var challenge = PkceUtils.challenge(verifier);
             final var state = PkceUtils.state();
 
-            final var authorizeUrl = authorizeUrl(challenge, state);
+            final var authorizeUrl =
+                    "https://%s/authorize?response_type=code&client_id=%s&redirect_uri=%s&scope=%s&audience=%s&code_challenge=%s&code_challenge_method=S256&state=%s"
+                            .formatted(
+                                    auth0Config.domain(),
+                                    encode(auth0Config.clientId()),
+                                    encode(REDIRECT_URI),
+                                    encode(auth0Config.scope()),
+                                    encode(auth0Config.audience()),
+                                    challenge,
+                                    state);
+
             progress.log("Open this URL in your browser to authorize:\n" + authorizeUrl);
             openUrl(authorizeUrl);
 
@@ -109,25 +119,5 @@ public class LoopbackServer {
                 .getBytes(StandardCharsets.US_ASCII));
         out.write(body);
         out.flush();
-    }
-
-    private String authorizeUrl(final String challenge, final String state) {
-
-        return "https://"
-                + auth0Config.domain()
-                + "/authorize?response_type=code"
-                + "&client_id="
-                + encode(auth0Config.clientId())
-                + "&redirect_uri="
-                + encode(REDIRECT_URI)
-                + "&scope="
-                + encode(auth0Config.scope())
-                + "&audience="
-                + encode(auth0Config.audience())
-                + "&code_challenge="
-                + challenge
-                + "&code_challenge_method=S256"
-                + "&state="
-                + state;
     }
 }

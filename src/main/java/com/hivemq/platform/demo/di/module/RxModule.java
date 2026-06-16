@@ -1,4 +1,4 @@
-package com.hivemq.platform.demo.di;
+package com.hivemq.platform.demo.di.module;
 
 import com.hivemq.platform.demo.di.scope.ApplicationScope;
 import dagger.Module;

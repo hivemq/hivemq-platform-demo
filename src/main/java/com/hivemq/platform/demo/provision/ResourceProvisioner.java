@@ -7,7 +7,9 @@ import static io.reactivex.rxjava3.core.Single.zip;
 
 import com.hivemq.platform.demo.domain.dto.*;
 import com.hivemq.platform.demo.domain.network.AgentxApi;
+import com.hivemq.platform.demo.domain.network.ConsoleApi;
 import com.hivemq.platform.demo.domain.network.PulseApi;
+import com.hivemq.platform.demo.oauth2.SessionManager;
 import io.reactivex.rxjava3.core.Single;
 import java.util.Map;
 import lombok.RequiredArgsConstructor;
@@ -19,8 +21,8 @@ public class ResourceProvisioner {
 
     private final PulseApi pulse;
     private final AgentxApi agentx;
-    private final JwtClaimsDto claims;
-    private final String sendgridApiKey;
+    private final ConsoleApi console;
+    private final SessionManager sessionManager;
 
     public Single<ProvisionResult> provision() {
         return zip(pulseToken(), agentxToken(), ProvisionResult::from);
@@ -47,11 +49,12 @@ public class ResourceProvisioner {
         return agentx.listNetworks()
                 .map(envelope -> envelope.data().itemsOrEmpty())
                 .flatMap(networks -> {
-                    final var dto = new CreateNetworkRequestDto(DEMO_NAME, DEMO_DESCRIPTION);
+                    if (networks.isEmpty()) {
+                        final var dto = new CreateNetworkRequestDto(DEMO_NAME, DEMO_DESCRIPTION);
+                        return agentx.createNetwork(dto).map(NetworkEnvelopeDto::data);
+                    }
 
-                    return networks.isEmpty()
-                            ? agentx.createNetwork(dto).map(NetworkEnvelopeDto::data)
-                            : just(networks.getFirst());
+                    return just(networks.getFirst());
                 })
                 .doOnSuccess(network -> log.info("AgentX network ready: {}", network.name()));
     }
@@ -60,12 +63,13 @@ public class ResourceProvisioner {
         return agentx.listOrchestrators(networkId)
                 .map(envelope -> envelope.data().itemsOrEmpty())
                 .flatMap(orchestrators -> {
-                    final var dto = new CreateOrchestratorRequestDto(
-                            DEMO_NAME, ORCHESTRATOR_TYPE, ORCHESTRATOR_COMMUNICATION_TYPE, networkId);
+                    if (orchestrators.isEmpty()) {
+                        final var dto = new CreateOrchestratorRequestDto(
+                                DEMO_NAME, ORCHESTRATOR_TYPE, ORCHESTRATOR_COMMUNICATION_TYPE, networkId);
+                        return agentx.createOrchestrator(dto).map(OrchestratorEnvelopeDto::data);
+                    }
 
-                    return orchestrators.isEmpty()
-                            ? agentx.createOrchestrator(dto).map(OrchestratorEnvelopeDto::data)
-                            : just(orchestrators.getFirst());
+                    return just(orchestrators.getFirst());
                 })
                 .doOnSuccess(orchestrator -> log.info("AgentX orchestrator ready: {}", orchestrator.name()));
     }
@@ -77,21 +81,32 @@ public class ResourceProvisioner {
     }
 
     private Single<OrchestratorAgentDto> ensureOrchestratorAgent(final String orchestratorId) {
+
         return agentx.listOrchestratorAgents(orchestratorId)
                 .map(OrchestratorAgentListEnvelopeDto::dataOrEmpty)
                 .flatMap(agents -> {
-                    final var environment = Map.of(
-                            ORCHESTRATOR_AGENT_ENV_ALERT_RECIPIENT, claims.email(),
-                            ORCHESTRATOR_AGENT_ENV_FACTORY_BROKER_URL, AGENT_BUS_BROKER_URL,
-                            ORCHESTRATOR_AGENT_ENV_SENDGRID_API_KEY, sendgridApiKey);
+                    if (agents.isEmpty()) {
+                        return console.getUserConfig()
+                                .map(UserConfigDto::sendGridKey)
+                                .doOnSuccess(_ -> log.info("Console user-config ready."))
+                                .flatMap(sendGridKey -> {
+                                    final var environment = Map.of(
+                                            ORCHESTRATOR_AGENT_ENV_ALERT_RECIPIENT,
+                                            sessionManager.claims().email(),
+                                            ORCHESTRATOR_AGENT_ENV_FACTORY_BROKER_URL,
+                                            AGENT_BUS_BROKER_URL,
+                                            ORCHESTRATOR_AGENT_ENV_SENDGRID_API_KEY,
+                                            sendGridKey);
 
-                    final var dto = new CreateOrchestratorAgentRequestDto(
-                            ORCHESTRATOR_AGENT_TEMPLATE_ID, ORCHESTRATOR_AGENT_VERSION, environment);
+                                    final var dto = new CreateOrchestratorAgentRequestDto(
+                                            ORCHESTRATOR_AGENT_TEMPLATE_ID, ORCHESTRATOR_AGENT_VERSION, environment);
 
-                    return agents.isEmpty()
-                            ? agentx.createOrchestratorAgent(orchestratorId, dto)
-                                    .map(OrchestratorAgentEnvelopeDto::data)
-                            : just(agents.getFirst());
+                                    return agentx.createOrchestratorAgent(orchestratorId, dto)
+                                            .map(OrchestratorAgentEnvelopeDto::data);
+                                });
+                    }
+
+                    return just(agents.getFirst());
                 })
                 .doOnSuccess(_ -> log.info("AgentX orchestrator agent ready."));
     }
@@ -100,9 +115,15 @@ public class ResourceProvisioner {
         return pulse.listProjects()
                 .map(ProjectsResponseDto::itemsOrEmpty)
                 .flatMap(projects -> {
-                    final var dto = new CreateProjectRequestDto(DEMO_NAME, DEMO_DESCRIPTION, claims.orgId());
+                    if (projects.isEmpty()) {
+                        final var dto = new CreateProjectRequestDto(
+                                DEMO_NAME,
+                                DEMO_DESCRIPTION,
+                                sessionManager.claims().orgId());
+                        return pulse.createProject(dto);
+                    }
 
-                    return projects.isEmpty() ? pulse.createProject(dto) : just(projects.getFirst());
+                    return just(projects.getFirst());
                 })
                 .doOnSuccess(project -> log.info("Pulse project ready: {}", project.name()));
     }
@@ -111,10 +132,13 @@ public class ResourceProvisioner {
         return pulse.listAgents(projectId)
                 .map(AgentsResponseDto::itemsOrEmpty)
                 .flatMap(agents -> {
-                    final var dto =
-                            new CreateAgentRequestDto(DEMO_NAME, DEMO_DESCRIPTION, PULSE_AGENT_INFRASTRUCTURE_TYPE);
+                    if (agents.isEmpty()) {
+                        final var dto =
+                                new CreateAgentRequestDto(DEMO_NAME, DEMO_DESCRIPTION, PULSE_AGENT_INFRASTRUCTURE_TYPE);
+                        return pulse.createAgent(projectId, dto);
+                    }
 
-                    return agents.isEmpty() ? pulse.createAgent(projectId, dto) : just(agents.getFirst());
+                    return just(agents.getFirst());
                 })
                 .doOnSuccess(agent -> log.info("Pulse agent ready: {}", agent.name()));
     }

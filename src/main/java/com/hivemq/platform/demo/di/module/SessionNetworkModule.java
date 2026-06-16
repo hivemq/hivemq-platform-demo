@@ -1,17 +1,15 @@
 package com.hivemq.platform.demo.di.module;
 
-import static com.hivemq.platform.demo.constants.Constants.Provisioning.ORCHESTRATOR_AGENT_ENV_SENDGRID_API_KEY;
-import static com.hivemq.platform.demo.utils.JwtUtils.decodeClaims;
-
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.hivemq.platform.demo.config.Configuration;
 import com.hivemq.platform.demo.di.qualifier.Agentx;
 import com.hivemq.platform.demo.di.qualifier.Authenticated;
+import com.hivemq.platform.demo.di.qualifier.Console;
 import com.hivemq.platform.demo.di.qualifier.Pulse;
 import com.hivemq.platform.demo.di.scope.SessionScope;
-import com.hivemq.platform.demo.domain.dto.JwtClaimsDto;
 import com.hivemq.platform.demo.domain.dto.Oauth2TokenDto;
 import com.hivemq.platform.demo.domain.network.AgentxApi;
+import com.hivemq.platform.demo.domain.network.ConsoleApi;
 import com.hivemq.platform.demo.domain.network.PulseApi;
 import com.hivemq.platform.demo.oauth2.Auth0Client;
 import com.hivemq.platform.demo.oauth2.SessionManager;
@@ -30,8 +28,9 @@ public class SessionNetworkModule {
 
     @Provides
     @SessionScope
-    SessionManager sessionManager(Oauth2TokenDto token, Auth0Client auth0Client) {
-        return new SessionManager(token, auth0Client);
+    SessionManager sessionManager(
+            Oauth2TokenDto token, Auth0Client auth0Client, ObjectMapper objectMapper, Configuration.Fallback fallback) {
+        return new SessionManager(token, auth0Client, objectMapper, fallback);
     }
 
     @Provides
@@ -46,24 +45,25 @@ public class SessionNetworkModule {
         return new TokenAuthenticator(sessionManager);
     }
 
+    @Pulse
     @Provides
     @SessionScope
-    JwtClaimsDto jwtClaimsDto(
-            SessionManager sessionManager, ObjectMapper objectMapper, Configuration.Fallback fallback) {
-        final var claims = decodeClaims(objectMapper, sessionManager.token().accessToken());
-        return JwtClaimsDto.from(claims, fallback);
+    String pulseBaseUrl(SessionManager sessionManager) {
+        return sessionManager.claims().pulseBaseUrl();
     }
 
-    @Provides
-    @Pulse
-    String pulseBaseUrl(JwtClaimsDto claims) {
-        return claims.pulseBaseUrl();
-    }
-
-    @Provides
     @Agentx
-    String agentxBaseUrl(JwtClaimsDto claims) {
-        return claims.agentxBaseUrl();
+    @Provides
+    @SessionScope
+    String agentxBaseUrl(SessionManager sessionManager) {
+        return sessionManager.claims().agentxBaseUrl();
+    }
+
+    @Console
+    @Provides
+    @SessionScope
+    String consoleBaseUrl(Configuration.Fallback fallback) {
+        return fallback.consoleBaseUrl();
     }
 
     @Provides
@@ -94,6 +94,13 @@ public class SessionNetworkModule {
 
     @Provides
     @SessionScope
+    @Console
+    Retrofit consoleRetrofit(@Console String baseUrl, @Authenticated OkHttpClient okHttpClient, Retrofit retrofit) {
+        return retrofit.newBuilder().baseUrl(baseUrl).client(okHttpClient).build();
+    }
+
+    @Provides
+    @SessionScope
     PulseApi pulseApi(@Pulse Retrofit retrofit) {
         return retrofit.create(PulseApi.class);
     }
@@ -106,16 +113,14 @@ public class SessionNetworkModule {
 
     @Provides
     @SessionScope
-    ResourceProvisioner resourceProvisioner(PulseApi pulseApi, AgentxApi agentxApi, JwtClaimsDto claims) {
-        return new ResourceProvisioner(pulseApi, agentxApi, claims, sendgridApiKey());
+    ConsoleApi consoleApi(@Console Retrofit retrofit) {
+        return retrofit.create(ConsoleApi.class);
     }
 
-    private static String sendgridApiKey() {
-        final var key = System.getenv(ORCHESTRATOR_AGENT_ENV_SENDGRID_API_KEY);
-        if (key == null || key.isBlank()) {
-            throw new IllegalStateException("%s is not set — export your SendGrid API key before running the demo."
-                    .formatted(ORCHESTRATOR_AGENT_ENV_SENDGRID_API_KEY));
-        }
-        return key;
+    @Provides
+    @SessionScope
+    ResourceProvisioner resourceProvisioner(
+            PulseApi pulseApi, AgentxApi agentxApi, ConsoleApi consoleApi, SessionManager sessionManager) {
+        return new ResourceProvisioner(pulseApi, agentxApi, consoleApi, sessionManager);
     }
 }

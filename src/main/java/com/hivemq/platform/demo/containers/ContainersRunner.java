@@ -111,7 +111,8 @@ public class ContainersRunner {
                 List.of(),
                 Map.of(
                         ENV_CONTROL_PLANE_URL, CONTROL_PLANE_URL,
-                        ENV_AGENT_BUS_BROKER_URL, AGENT_BUS_BROKER_URL),
+                        ENV_AGENT_BUS_BROKER_URL, AGENT_BUS_BROKER_URL,
+                        ENV_HIVEMQ_AGENTIC_BUS_NETWORK_NAME_SUFFIXED, AGENTIC_BUS_NETWORK_NAME_SUFFIXED),
                 List.of(),
                 List.of(new Mount(DOCKER_SOCK, DOCKER_SOCK, false)),
                 false,

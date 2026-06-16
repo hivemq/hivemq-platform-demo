@@ -46,6 +46,7 @@
           "parameterTypes": [
             "java.lang.String",
             "java.lang.String",
+            "java.lang.String",
             "java.lang.String"
           ]
         }
@@ -841,6 +842,13 @@
       "type": {
         "proxy": [
           "com.hivemq.platform.demo.domain.network.AgentxApi"
+        ]
+      }
+    },
+    {
+      "type": {
+        "proxy": [
+          "com.hivemq.platform.demo.domain.network.ConsoleApi"
         ]
       }
     },
