@@ -112,6 +112,11 @@ public class ContainersRunner {
                         configuration.fallback().agentxBaseUrl(),
                         ENV_AGENT_BUS_BROKER_URL,
                         AGENT_BUS_BROKER_URL,
+                        // Pin the orchestrator's agent-bus Docker network to the flat,
+                        // un-suffixed name so spawned agents land on the same network as
+                        // this app's broker. Newer orchestrator images suffix the network
+                        // per-orchestrator by default (hivemq-agentic-bus-<slug>), which
+                        // would isolate agents from `hivemq-broker` → getaddrinfo ENOTFOUND.
                         ENV_HIVEMQ_AGENTIC_BUS_NETWORK_NAME_SUFFIXED,
                         AGENTIC_BUS_NETWORK_NAME_SUFFIXED),
                 List.of(),
