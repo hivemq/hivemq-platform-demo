@@ -27,6 +27,8 @@ public interface Constants {
         String CALLBACK_PATH = "/callback";
 
         String REDIRECT_URI = "http://" + CALLBACK_HOST + ":" + CALLBACK_PORT + CALLBACK_PATH;
+
+        Duration ORCHESTRATOR_LOOPBACK_SERVER_TIMEOUT = Duration.ofMinutes(3);
     }
 
     interface Containers {
@@ -50,6 +52,8 @@ public interface Constants {
         // supplied dynamically at runtime (no defaults baked into the image)
         String ENV_PULSE_TOKEN = "PULSE_TOKEN";
         String ENV_REGISTRATION_TOKEN = "HIVEMQ_AGENTIC_REGISTRATION_TOKEN";
+        String ENV_ORCHESTRATOR_ID = "ORCHESTRATOR_ID";
+        String ENV_ORCHESTRATOR_NAME = "ORCHESTRATOR_NAME";
 
         List<String> BROKER_HEALTHCHECK_TEST = List.of("CMD-SHELL", "bash -c 'echo > /dev/tcp/localhost/1883'");
         Duration BROKER_HEALTHCHECK_INTERVAL = Duration.ofSeconds(5);
@@ -69,7 +73,6 @@ public interface Constants {
         String ENV_AGENT_BUS_BROKER_URL = "AGENT_BUS_BROKER_URL";
         String ENV_HIVEMQ_AGENTIC_BUS_NETWORK_NAME_SUFFIXED = "HIVEMQ_AGENTIC_BUS_NETWORK_NAME_SUFFIXED";
 
-        String CONTROL_PLANE_URL = "https://staging.act.hivemq.com";
         String AGENT_BUS_BROKER_URL = "mqtt://hivemq-broker:1883";
         String AGENTIC_BUS_NETWORK_NAME_SUFFIXED = "false";
 

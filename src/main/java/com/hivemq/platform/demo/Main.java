@@ -1,5 +1,7 @@
 package com.hivemq.platform.demo;
 
+import static com.hivemq.platform.demo.constants.Constants.Containers.ENV_ORCHESTRATOR_ID;
+import static com.hivemq.platform.demo.constants.Constants.Containers.ENV_ORCHESTRATOR_NAME;
 import static com.hivemq.platform.demo.constants.Constants.Containers.ENV_PULSE_TOKEN;
 import static com.hivemq.platform.demo.constants.Constants.Containers.ENV_REGISTRATION_TOKEN;
 import static io.reactivex.rxjava3.core.Completable.fromAction;
@@ -50,7 +52,10 @@ public class Main {
                 .flatMapCompletable(result -> {
                     progress.phase("Starting broker + orchestrator containers …");
                     final var pulseEnv = Map.of(ENV_PULSE_TOKEN, result.pulseToken());
-                    final var orchestratorEnv = Map.of(ENV_REGISTRATION_TOKEN, result.registrationToken());
+                    final var orchestratorEnv = Map.of(
+                            ENV_REGISTRATION_TOKEN, result.registrationToken(),
+                            ENV_ORCHESTRATOR_ID, result.orchestratorId(),
+                            ENV_ORCHESTRATOR_NAME, result.orchestratorName());
 
                     return containersRunner
                             .run(pulseEnv, orchestratorEnv)

@@ -25,24 +25,29 @@ public class ResourceProvisioner {
     private final SessionManager sessionManager;
 
     public Single<ProvisionResult> provision() {
-        return zip(pulseToken(), agentxToken(), ProvisionResult::from);
+        return zip(pulseProvision(), agentxProvision(), (pulseResult, agentxResult) -> {
+            final var pulseToken = pulseResult.pulseToken;
+            final var agentxRegistrationToken = agentxResult.registrationToken;
+            final var agentxOrchestratorId = agentxResult.orchestratorId;
+            final var agentxOrchestratorName = agentxResult.orchestratorName;
+
+            return new ProvisionResult(
+                    pulseToken, agentxRegistrationToken, agentxOrchestratorId, agentxOrchestratorName);
+        });
     }
 
-    private Single<String> agentxToken() {
+    private record PulseResult(String pulseToken) {}
+
+    private record AgentxResult(String orchestratorId, String orchestratorName, String registrationToken) {}
+
+    // --- agentx
+
+    private Single<AgentxResult> agentxProvision() {
         return ensureNetwork()
                 .flatMap(network -> ensureOrchestrator(network.id()))
-                .flatMap(orchestrator -> {
-                    final var orchestratorId = orchestrator.id();
-
-                    return mintEnrollmentToken(orchestratorId).flatMap(token -> {
-                        return ensureOrchestratorAgent(orchestratorId).map(_ -> token);
-                    });
-                });
-    }
-
-    private Single<String> pulseToken() {
-        return ensureProject().flatMap(project -> ensureAgent(project.id())
-                .flatMap(agent -> mintPulseToken(project.id(), agent.id())));
+                .flatMap(orchestrator -> mintEnrollmentToken(orchestrator.id())
+                        .flatMap(token -> ensureOrchestratorAgent(orchestrator.id())
+                                .map(_ -> new AgentxResult(orchestrator.id(), orchestrator.name(), token))));
     }
 
     private Single<NetworkDto> ensureNetwork() {
@@ -92,11 +97,9 @@ public class ResourceProvisioner {
                                 .flatMap(sendGridKey -> {
                                     final var environment = Map.of(
                                             ORCHESTRATOR_AGENT_ENV_ALERT_RECIPIENT,
-                                            sessionManager.claims().email(),
-                                            ORCHESTRATOR_AGENT_ENV_FACTORY_BROKER_URL,
-                                            AGENT_BUS_BROKER_URL,
-                                            ORCHESTRATOR_AGENT_ENV_SENDGRID_API_KEY,
-                                            sendGridKey);
+                                                    sessionManager.claims().email(),
+                                            ORCHESTRATOR_AGENT_ENV_FACTORY_BROKER_URL, AGENT_BUS_BROKER_URL,
+                                            ORCHESTRATOR_AGENT_ENV_SENDGRID_API_KEY, sendGridKey);
 
                                     final var dto = new CreateOrchestratorAgentRequestDto(
                                             ORCHESTRATOR_AGENT_TEMPLATE_ID, ORCHESTRATOR_AGENT_VERSION, environment);
@@ -109,6 +112,15 @@ public class ResourceProvisioner {
                     return just(agents.getFirst());
                 })
                 .doOnSuccess(_ -> log.info("AgentX orchestrator agent ready."));
+    }
+
+    // --- pulse
+
+    private Single<PulseResult> pulseProvision() {
+        return ensureProject()
+                .flatMap(
+                        project -> ensureAgent(project.id()).flatMap(agent -> mintPulseToken(project.id(), agent.id())))
+                .map(token -> new PulseResult(token));
     }
 
     private Single<ProjectDto> ensureProject() {

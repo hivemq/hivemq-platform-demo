@@ -4,6 +4,7 @@ import static com.hivemq.platform.demo.constants.Constants.Containers.*;
 import static io.reactivex.rxjava3.core.Completable.fromAction;
 import static io.reactivex.rxjava3.core.Completable.mergeArray;
 
+import com.hivemq.platform.demo.config.Configuration;
 import io.reactivex.rxjava3.core.Completable;
 import io.reactivex.rxjava3.core.Scheduler;
 import java.util.List;
@@ -17,9 +18,8 @@ public class ContainersRunner {
 
     private final Scheduler ioScheduler;
     private final DockerManager dockerManager;
+    private final Configuration configuration;
 
-    // Preflight: verify the Docker daemon is reachable before the flow starts, so a missing/stopped
-    // Docker fails immediately instead of after the user has already signed in and provisioned.
     public Completable ensureDockerAvailable() {
         return dockerManager.ensureDockerAvailable();
     }
@@ -63,9 +63,6 @@ public class ContainersRunner {
                 .subscribeOn(ioScheduler);
     }
 
-    // Teardown is best-effort cleanup from the shutdown hook: if the daemon is unreachable (e.g. the
-    // run failed the Docker preflight) or a container was never created, there's nothing to remove —
-    // swallow so the shutdown thread never surfaces an uncaught stack trace.
     private Completable forceRemoveQuietly(final String name) {
         return dockerManager.forceRemoveByName(name).onErrorComplete(error -> {
             log.debug("Teardown of '{}' skipped: {}", name, error.getMessage());
@@ -110,9 +107,10 @@ public class ContainersRunner {
                 NETWORK_NAME,
                 List.of(),
                 Map.of(
-                        ENV_CONTROL_PLANE_URL, CONTROL_PLANE_URL,
-                        ENV_AGENT_BUS_BROKER_URL, AGENT_BUS_BROKER_URL,
-                        ENV_HIVEMQ_AGENTIC_BUS_NETWORK_NAME_SUFFIXED, AGENTIC_BUS_NETWORK_NAME_SUFFIXED),
+                        ENV_CONTROL_PLANE_URL,
+                        configuration.fallback().agentxBaseUrl(),
+                        ENV_AGENT_BUS_BROKER_URL,
+                        AGENT_BUS_BROKER_URL),
                 List.of(),
                 List.of(new Mount(DOCKER_SOCK, DOCKER_SOCK, false)),
                 false,

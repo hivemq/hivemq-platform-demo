@@ -17,17 +17,26 @@ public record JwtClaimsDto(String orgId, String email, String pulseBaseUrl, Stri
             throw new IllegalStateException("Access token has no orgs[]; cannot derive the context.");
 
         final var org = orgs.get(0);
-        final var pulseResolvedUrl = org.path(PULSE).path(SERVER_URL).asText("");
-        final var agentxResolvedUrl = org.path(AGENTX).path(SERVER_URL).asText("");
+        final var resolvedOrgId = org.path(ID).asText("");
+        final var resolvedEmail = claims.path(EMAIL).asText("");
+        final var resolvedPulseUrl = org.path(PULSE).path(SERVER_URL).asText("");
+        final var resolvedAgentxUrl = org.path(AGENTX).path(SERVER_URL).asText("");
 
-        final var orgId = coalesce(org.path(ID).asText(""), fallback.orgId());
-        final var email = claims.path(EMAIL).asText("");
-        final var pulseUrl = withScheme(coalesce(pulseResolvedUrl, fallback.pulseBaseUrl()));
-        final var agentxUrl = withScheme(coalesce(agentxResolvedUrl, fallback.agentxBaseUrl()));
+        log.info(
+                "Claimed OrgId: ({}), Claimed Email: ({}), Claimed PulseUrl: ({}), Claimed AgentxUrl: ({})",
+                resolvedOrgId,
+                resolvedEmail,
+                resolvedPulseUrl,
+                resolvedAgentxUrl);
 
-        log.info("OrgId: ({}), Email: ({}), PulseUrl: ({}), AgentxUrl: ({})", orgId, email, pulseUrl, agentxUrl);
+        final var orgId = coalesce(resolvedOrgId, fallback.orgId());
+        final var pulseUrl = withScheme(coalesce(resolvedPulseUrl, fallback.pulseBaseUrl()));
+        final var agentxUrl = withScheme(coalesce(resolvedAgentxUrl, fallback.agentxBaseUrl()));
 
-        return new JwtClaimsDto(orgId, email, pulseUrl, agentxUrl);
+        log.info(
+                "OrgId: ({}), Email: ({}), PulseUrl: ({}), AgentxUrl: ({})", orgId, resolvedEmail, pulseUrl, agentxUrl);
+
+        return new JwtClaimsDto(orgId, resolvedEmail, pulseUrl, agentxUrl);
     }
 
     private static String coalesce(final String value, final String fallback) {

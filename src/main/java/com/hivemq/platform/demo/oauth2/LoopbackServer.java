@@ -8,7 +8,7 @@ import static com.hivemq.platform.demo.utils.WebUtils.htmlPage;
 import static io.reactivex.rxjava3.core.Single.fromCallable;
 import static io.reactivex.rxjava3.core.Single.using;
 import static java.nio.charset.StandardCharsets.UTF_8;
-import static java.util.concurrent.TimeUnit.MINUTES;
+import static java.util.concurrent.TimeUnit.MILLISECONDS;
 
 import com.hivemq.platform.demo.config.Configuration;
 import com.hivemq.platform.demo.console.ConsoleProgress;
@@ -18,12 +18,9 @@ import io.reactivex.rxjava3.core.Scheduler;
 import io.reactivex.rxjava3.core.Single;
 import io.reactivex.rxjava3.functions.Consumer;
 import io.reactivex.rxjava3.functions.Supplier;
-import java.io.BufferedReader;
-import java.io.IOException;
-import java.io.InputStreamReader;
+import java.io.*;
 import java.net.InetAddress;
 import java.net.ServerSocket;
-import java.net.Socket;
 import java.nio.charset.StandardCharsets;
 import lombok.RequiredArgsConstructor;
 import org.jspecify.annotations.NonNull;
@@ -38,7 +35,7 @@ public class LoopbackServer {
 
     public Single<Oauth2TokenDto> obtainToken() {
         return using(createServer(), this::obtainToken, terminateServer())
-                .timeout(3, MINUTES)
+                .timeout(ORCHESTRATOR_LOOPBACK_SERVER_TIMEOUT.toMillis(), MILLISECONDS)
                 .subscribeOn(ioScheduler);
     }
 
@@ -50,6 +47,7 @@ public class LoopbackServer {
         return ServerSocket::close;
     }
 
+    @SuppressWarnings("BlockingMethodInNonBlockingContext")
     private Single<Oauth2TokenDto> obtainToken(final ServerSocket server) {
         return fromCallable(() -> {
             final var verifier = PkceUtils.verifier();
@@ -71,7 +69,11 @@ public class LoopbackServer {
             openUrl(authorizeUrl);
 
             try (var socket = server.accept()) {
-                final var requestSegments = extractRequestSegments(socket);
+
+                final var inputStream = socket.getInputStream();
+                final var outputStream = socket.getOutputStream();
+
+                final var requestSegments = extractRequestSegments(inputStream);
 
                 final var tokenRequestPath = requestSegments[1];
 
@@ -83,7 +85,7 @@ public class LoopbackServer {
                         ? htmlPage("Authorized", "Please return to the terminal.")
                         : htmlPage("Authorization failed", "Please return to the terminal.");
 
-                writeResponse(socket, html);
+                writeResponse(outputStream, html);
 
                 if (!ok) {
                     throw new IllegalStateException(
@@ -96,8 +98,8 @@ public class LoopbackServer {
         });
     }
 
-    private String @NonNull [] extractRequestSegments(Socket socket) throws IOException {
-        final var inputStreamReader = new InputStreamReader(socket.getInputStream(), UTF_8);
+    private String @NonNull [] extractRequestSegments(final InputStream is) throws IOException {
+        final var inputStreamReader = new InputStreamReader(is, UTF_8);
         final var bufferedReader = new BufferedReader(inputStreamReader);
         final var requestLine = bufferedReader.readLine();
         final var malformedCallbackRequest = new IllegalStateException("Malformed callback request");
@@ -107,9 +109,8 @@ public class LoopbackServer {
         return requestSegments;
     }
 
-    private void writeResponse(final Socket socket, final String html) throws IOException {
+    private void writeResponse(final OutputStream out, final String html) throws IOException {
         final var body = html.getBytes(UTF_8);
-        final var out = socket.getOutputStream();
         out.write(("HTTP/1.1 200 OK\r\n"
                         + "Content-Type: text/html; charset=utf-8\r\n"
                         + "Content-Length: "
