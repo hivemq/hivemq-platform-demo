@@ -5,6 +5,7 @@ import static io.reactivex.rxjava3.core.Completable.fromAction;
 import static io.reactivex.rxjava3.core.Completable.mergeArray;
 
 import com.hivemq.platform.demo.config.Configuration;
+import com.hivemq.platform.demo.containers.ContainerSpec.HealthSpec;
 import io.reactivex.rxjava3.core.Completable;
 import io.reactivex.rxjava3.core.Scheduler;
 import java.util.List;
@@ -92,7 +93,7 @@ public class ContainersRunner {
                         new PortBinding(BROKER_CONTROL_CENTER_PORT, BROKER_CONTROL_CENTER_PORT)),
                 List.of(),
                 false,
-                new ContainerSpec.HealthSpec(
+                new HealthSpec(
                         BROKER_HEALTHCHECK_TEST,
                         BROKER_HEALTHCHECK_INTERVAL,
                         BROKER_HEALTHCHECK_TIMEOUT,
@@ -114,7 +115,7 @@ public class ContainersRunner {
                 List.of(),
                 List.of(new Mount(DOCKER_SOCK, DOCKER_SOCK, false)),
                 false,
-                new ContainerSpec.HealthSpec(
+                new HealthSpec(
                         ORCHESTRATOR_HEALTHCHECK_TEST,
                         ORCHESTRATOR_HEALTHCHECK_INTERVAL,
                         ORCHESTRATOR_HEALTHCHECK_TIMEOUT,
