@@ -1,0 +1,122 @@
+name: release
+
+# On every push to main: cut the next version tag with axion-release, build the GraalVM native
+# binaries (one runner per target — native images can't be cross-compiled), and publish the
+# binaries, their .sha256 checksums, and install.sh to that tag's GitHub Release.
+#
+# Targets (kept in sync with install.sh's `demo-${os}-${arch}` detection):
+#   - demo-linux-amd64   -> ubuntu-latest
+#   - demo-darwin-arm64  -> macos-14 (Apple Silicon)
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+# Serialize releases so concurrent main pushes can't race on tag creation / version bumps.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  tag:
+    name: cut release tag (axion)
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.axion.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # axion-release needs the full tag history to compute the next version
+
+      - name: Set up JDK 25
+        uses: actions/setup-java@v4
+        with:
+          java-version: '25'
+          distribution: 'temurin'   # no native build here, so any JDK 25 is fine
+
+      - name: Create and push the next tag
+        id: axion
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          # axion creates the local tag (vX.Y.Z, patch-incremented from the last release).
+          ./gradlew createRelease --no-daemon
+          tag="$(git describe --tags --abbrev=0)"
+          # Push via the git CLI (uses checkout's stored token). Tags pushed with GITHUB_TOKEN
+          # do NOT retrigger workflows, so this can't loop back into another release run.
+          git push origin "refs/tags/${tag}"
+          echo "tag=${tag}" >> "$GITHUB_OUTPUT"
+          echo "Released ${tag}"
+
+  build:
+    name: build ${{ matrix.asset }}
+    needs: tag
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { runner: ubuntu-latest, asset: demo-linux-amd64 }
+          - { runner: macos-14, asset: demo-darwin-arm64 }
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.tag.outputs.tag }}   # build the exact tagged commit
+          fetch-depth: 0
+
+      - name: Set up GraalVM (JDK 25)
+        uses: graalvm/setup-graalvm@v1
+        with:
+          java-version: '25'
+          distribution: 'graalvm-community'   # GraalVM CE for JDK 25 — matches the local toolchain
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build native image
+        run: ./gradlew nativeCompile --no-daemon
+
+      - name: Stage asset
+        run: |
+          mkdir -p dist
+          cp build/native/nativeCompile/demo "dist/${{ matrix.asset }}"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.asset }}
+          path: dist/${{ matrix.asset }}
+          if-no-files-found: error
+
+  release:
+    name: publish release
+    needs: [tag, build]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.tag.outputs.tag }}
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: Assemble release files (binaries + checksums + installer)
+        run: |
+          mkdir -p dist
+          cp install.sh internal_install.sh dist/
+          for f in artifacts/demo-*; do
+            name="$(basename "$f")"
+            cp "$f" "dist/$name"
+            ( cd dist && sha256sum "$name" | cut -d' ' -f1 > "$name.sha256" )   # bare hex hash
+          done
+          ls -l dist
+
+      - name: Publish to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.tag.outputs.tag }}
+          files: dist/*
+          fail_on_unmatched_files: true

@@ -1,0 +1,102 @@
+plugins {
+    id 'java'
+    id 'application'
+    alias(libs.plugins.axion.release)
+    alias(libs.plugins.spotless)
+    alias(libs.plugins.graalvm.native)
+}
+
+group = 'com.hivemq'
+
+scmVersion {
+    tag {
+        prefix = 'v'
+    }
+}
+
+version = scmVersion.version
+
+application {
+    mainClass = 'com.hivemq.platform.demo.Main'
+}
+
+dependencies {
+    implementation libs.dagger
+    annotationProcessor libs.dagger.compiler
+
+    implementation platform(libs.okhttp.bom)
+    implementation libs.okhttp
+    implementation libs.okhttp.logging
+
+    implementation platform(libs.retrofit.bom)
+    implementation libs.retrofit
+    implementation libs.retrofit.jackson
+    implementation libs.retrofit.rxjava3
+
+    implementation libs.rxjava
+
+    implementation platform(libs.jackson.bom)
+    implementation libs.jackson.databind
+    implementation libs.jackson.jsr310
+    implementation libs.jackson.toml
+    implementation libs.jackson.yaml
+
+    implementation platform(libs.docker.java.bom)
+    implementation libs.docker.java.core
+    implementation libs.docker.java.transport.httpclient5
+
+    implementation libs.hivemq.mqtt.client
+
+    implementation platform(libs.slf4j.bom)
+    implementation libs.slf4j.api
+    runtimeOnly libs.slf4j.simple
+
+    compileOnly libs.lombok
+    annotationProcessor libs.lombok
+    testCompileOnly libs.lombok
+    testAnnotationProcessor libs.lombok
+
+    testImplementation platform(libs.junit.bom)
+    testImplementation libs.junit.jupiter
+    testRuntimeOnly libs.junit.platform.launcher
+}
+
+spotless {
+    java {
+        target 'src/*/java/**/*.java'
+        palantirJavaFormat()
+        removeUnusedImports()
+        formatAnnotations()
+        trimTrailingWhitespace()
+        endWithNewline()
+    }
+}
+
+graalvmNative {
+    // use the GraalVM in JAVA_HOME (GraalVM CE 25) instead of provisioning a toolchain
+    toolchainDetection = false
+
+    // pull reachability metadata for known libraries (OkHttp, Apache HttpClient, …)
+    metadataRepository {
+        enabled = true
+    }
+
+    // Reachability metadata under src/main/resources/META-INF/native-image is maintained by hand:
+    //   .../com.hivemq.platform.demo/demo        — baseline (TLS/crypto, SPI resources, Retrofit proxies)
+    //   .../com.hivemq.platform.demo/dto         — our DTOs + config records
+    //   .../com.github.docker-java/docker-java   — docker-java api.model / api.command
+    // (originally seeded by the GraalVM tracing agent; the agent task is no longer wired)
+
+    binaries {
+        main {
+            imageName = 'demo'
+            mainClass = 'com.hivemq.platform.demo.Main'
+            buildArgs.add('--no-fallback')
+            buildArgs.add('-H:+ReportExceptionStackTraces')
+        }
+    }
+}
+
+test {
+    useJUnitPlatform()
+}
