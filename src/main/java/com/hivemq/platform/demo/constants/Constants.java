@@ -19,6 +19,9 @@ public interface Constants {
 
         // namespaced custom claim added by the Auth0 action (not the standard OIDC "email")
         String EMAIL = "https://hmqc.cloud.email";
+
+        // optional override pinning which org to use when the user belongs to several pulse-enabled orgs
+        String HIVEMQ_ORG_ID_ENV = "HIVEMQ_ORG_ID";
     }
 
     interface Loopback {

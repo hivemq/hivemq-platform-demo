@@ -73,3 +73,7 @@ startup — the Auth0 settings plus `fallback.*` values used when a claim is mis
 Everything else (ports, container names, healthcheck timings, sensor/anomaly parameters, the agent
 template id) lives in
 [`Constants.java`](src/main/java/com/hivemq/platform/demo/constants/Constants.java).
+
+The demo runs against a **Pulse-enabled** org from your access token, picking the first one
+automatically. If you belong to several Pulse-enabled orgs, set `HIVEMQ_ORG_ID` to pin the one to
+use — it must match a Pulse-enabled org, otherwise the run fails and lists the eligible org ids.
