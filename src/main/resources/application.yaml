@@ -1,11 +1,11 @@
 auth0:
-  domain: auth.staging.hmqc.dev
-  client-id: Q6lrZn0pNmfMfgWGFq1TBirs150K2F3d
+  domain: auth.hivemq.cloud
+  client-id: 5t8lB7digowuiKZaV6rPOGIxiZARNn4S
   audience: hivemq-cloud-api
   scope: openid profile email offline_access
 
 fallback:
   org-id: "dummy"
   pulse-base-url: "https://pulse2.dev.hmqc.dev"
-  agentx-base-url: "https://staging.act.hivemq.com"
-  console-base-url: "https://api.console.staging.hmqc.dev"
+  agentx-base-url: "https://act.hivemq.com"
+  console-base-url: "https://api.console.hivemq.cloud"

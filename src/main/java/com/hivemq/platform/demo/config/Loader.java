@@ -9,7 +9,7 @@ import lombok.RequiredArgsConstructor;
 @RequiredArgsConstructor
 public class Loader {
 
-    private static final String RESOURCE = "/application-prod.yaml";
+    private static final String RESOURCE = "/application.yaml";
 
     private final ObjectMapper mapper;
 
