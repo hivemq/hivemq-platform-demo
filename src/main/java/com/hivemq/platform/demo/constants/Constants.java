@@ -114,7 +114,7 @@ public interface Constants {
         String ORCHESTRATOR_TYPE = "docker";
         String ORCHESTRATOR_COMMUNICATION_TYPE = "http";
         String ORCHESTRATOR_AGENT_TEMPLATE_ID = "00000000-0000-4000-a000-000000000102";
-        String ORCHESTRATOR_AGENT_VERSION = "1.0.4";
+        String ORCHESTRATOR_AGENT_VERSION = "1.0.9";
 
         // environment passed to the orchestrator agent on creation (template-specific keys)
         String ORCHESTRATOR_AGENT_ENV_ALERT_RECIPIENT = "ALERT_RECIPIENT";
