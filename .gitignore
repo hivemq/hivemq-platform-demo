@@ -357,3 +357,7 @@ gradle-app.setting
 *.hprof
 
 # End of https://www.toptal.com/developers/gitignore/api/intellij,intellij+iml,intellij+all,java,gradle,linux,windows,macos
+### Project-local tooling ###
+# Gradle 'bin' output dir and Serena agent workspace
+bin/
+.serena/
