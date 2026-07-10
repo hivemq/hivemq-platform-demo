@@ -91,7 +91,7 @@ public interface Constants {
         String BROKER_HOST = "localhost";
         Integer BROKER_PORT = Containers.BROKER_MQTT_PORT;
 
-        String TOPIC_PREFIX = "factory/sensor";
+        String TOPIC_PREFIX = "hivemq-agentic-ai-demo/factory/sensor";
         Long PUBLISH_INTERVAL_MILLIS = 1000L;
 
         // anomaly behaviour — tuned to the marketplace template's rolling-window rule.
