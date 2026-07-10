@@ -10,14 +10,7 @@ import com.github.dockerjava.api.command.BuildImageResultCallback;
 import com.github.dockerjava.api.command.PullImageResultCallback;
 import com.github.dockerjava.api.exception.ConflictException;
 import com.github.dockerjava.api.exception.NotFoundException;
-import com.github.dockerjava.api.model.AccessMode;
-import com.github.dockerjava.api.model.Bind;
-import com.github.dockerjava.api.model.ExposedPort;
-import com.github.dockerjava.api.model.HealthCheck;
-import com.github.dockerjava.api.model.HostConfig;
-import com.github.dockerjava.api.model.Ports;
-import com.github.dockerjava.api.model.RestartPolicy;
-import com.github.dockerjava.api.model.Volume;
+import com.github.dockerjava.api.model.*;
 import io.reactivex.rxjava3.core.Completable;
 import io.reactivex.rxjava3.core.Scheduler;
 import io.reactivex.rxjava3.core.Single;
@@ -160,7 +153,8 @@ public class DockerManager {
                     final var hostConfig = HostConfig.newHostConfig()
                             .withNetworkMode(spec.networkName())
                             .withPortBindings(portBindings)
-                            .withBinds(binds);
+                            .withBinds(binds)
+                            .withSecurityOpts(List.of("label=disable"));
 
                     if (spec.restartUnlessStopped()) {
                         hostConfig.withRestartPolicy(RestartPolicy.unlessStoppedRestart());
@@ -169,6 +163,7 @@ public class DockerManager {
                     final var create = dockerClient
                             .createContainerCmd(spec.image())
                             .withName(spec.name())
+                            .withUser("root")
                             .withEnv(toEnvList(spec.env()))
                             .withExposedPorts(exposedPorts)
                             .withHostConfig(hostConfig);
