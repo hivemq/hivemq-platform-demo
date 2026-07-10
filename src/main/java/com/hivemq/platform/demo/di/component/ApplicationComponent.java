@@ -13,7 +13,8 @@ import com.hivemq.platform.demo.di.module.NetworkModule;
 import com.hivemq.platform.demo.di.module.RxModule;
 import com.hivemq.platform.demo.di.scope.ApplicationScope;
 import com.hivemq.platform.demo.domain.dto.ArgsDto;
-import com.hivemq.platform.demo.mqtt.MockDataPublisher;
+import com.hivemq.platform.demo.mqtt.AnomaliesDataPublisher;
+import com.hivemq.platform.demo.mqtt.DeviationsDataPublisher;
 import com.hivemq.platform.demo.oauth2.LoopbackServer;
 import dagger.BindsInstance;
 import dagger.Component;
@@ -38,7 +39,9 @@ public interface ApplicationComponent {
 
     ContainersRunner containersRunner();
 
-    MockDataPublisher mockDataPublisher();
+    AnomaliesDataPublisher anomaliesDataPublisher();
+
+    DeviationsDataPublisher deviationsDataPublisher();
 
     ConsoleProgress consoleProgress();
 

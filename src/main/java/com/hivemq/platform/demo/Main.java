@@ -5,6 +5,7 @@ import static com.hivemq.platform.demo.constants.Constants.Containers.ENV_ORCHES
 import static com.hivemq.platform.demo.constants.Constants.Containers.ENV_PULSE_TOKEN;
 import static com.hivemq.platform.demo.constants.Constants.Containers.ENV_REGISTRATION_TOKEN;
 import static io.reactivex.rxjava3.core.Completable.fromAction;
+import static io.reactivex.rxjava3.core.Completable.mergeArray;
 
 import com.hivemq.platform.demo.di.component.DaggerApplicationComponent;
 import com.hivemq.platform.demo.domain.dto.ArgsDto;
@@ -23,7 +24,8 @@ public class Main {
         final var progress = applicationComponent.consoleProgress();
         final var loopbackServer = applicationComponent.loopbackServer();
         final var containersRunner = applicationComponent.containersRunner();
-        final var mockDataPublisher = applicationComponent.mockDataPublisher();
+        final var anomaliesDataPublisher = applicationComponent.anomaliesDataPublisher();
+        final var deviationsDataPublisher = applicationComponent.deviationsDataPublisher();
 
         // Surface stray async errors during normal operation; the shutdown hook swaps this for a
         // no-op once teardown starts, since late publishes to the (now removed) broker are expected.
@@ -61,7 +63,7 @@ public class Main {
                             .run(pulseEnv, orchestratorEnv)
                             .andThen(fromAction(
                                     () -> progress.done("Stack is up. Publishing sensor data — Ctrl+C to stop.")))
-                            .andThen(mockDataPublisher.publish());
+                            .andThen(mergeArray(anomaliesDataPublisher.publish(), deviationsDataPublisher.publish()));
                 })
                 .subscribe(done::countDown, failure -> {
                     progress.fail("Demo failed: " + failure.getMessage());

@@ -58,9 +58,7 @@ class JwtClaimsDtoTest {
 
     @Test
     void rejectsPinnedOrgIdThatIsNotPulseEnabled() {
-        final var orgs = orgs("{\"orgs\":["
-                + "{\"id\":\"a\",\"pulse\":{\"serverUrl\":\"p\"}},"
-                + "{\"id\":\"b\"}]}");
+        final var orgs = orgs("{\"orgs\":[" + "{\"id\":\"a\",\"pulse\":{\"serverUrl\":\"p\"}}," + "{\"id\":\"b\"}]}");
         final var ex = assertThrows(IllegalStateException.class, () -> JwtClaimsDto.selectOrg(orgs, "b"));
         assertTrue(ex.getMessage().contains("HIVEMQ_ORG_ID"), ex.getMessage());
         assertTrue(ex.getMessage().contains("[a]"), ex.getMessage());
