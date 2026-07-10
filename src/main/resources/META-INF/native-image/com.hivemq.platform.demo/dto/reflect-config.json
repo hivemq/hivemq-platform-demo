@@ -36,6 +36,12 @@
     "allDeclaredFields": true
   },
   {
+    "name": "com.hivemq.platform.demo.domain.dto.AnomaliesSensorReadingDto",
+    "allDeclaredConstructors": true,
+    "allDeclaredMethods": true,
+    "allDeclaredFields": true
+  },
+  {
     "name": "com.hivemq.platform.demo.domain.dto.CreateAgentRequestDto",
     "allDeclaredConstructors": true,
     "allDeclaredMethods": true,
@@ -61,6 +67,12 @@
   },
   {
     "name": "com.hivemq.platform.demo.domain.dto.CreateProjectRequestDto",
+    "allDeclaredConstructors": true,
+    "allDeclaredMethods": true,
+    "allDeclaredFields": true
+  },
+  {
+    "name": "com.hivemq.platform.demo.domain.dto.DeviationsSensorReadingDto",
     "allDeclaredConstructors": true,
     "allDeclaredMethods": true,
     "allDeclaredFields": true
@@ -163,12 +175,6 @@
   },
   {
     "name": "com.hivemq.platform.demo.domain.dto.ProjectsResponseDto",
-    "allDeclaredConstructors": true,
-    "allDeclaredMethods": true,
-    "allDeclaredFields": true
-  },
-  {
-    "name": "com.hivemq.platform.demo.domain.dto.SensorReadingDto",
     "allDeclaredConstructors": true,
     "allDeclaredMethods": true,
     "allDeclaredFields": true

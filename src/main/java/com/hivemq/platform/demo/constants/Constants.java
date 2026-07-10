@@ -95,7 +95,8 @@ public interface Constants {
         Integer BROKER_PORT = Containers.BROKER_MQTT_PORT;
 
         String TOPIC_PREFIX = "hivemq-agentic-ai-demo/factory/sensor";
-        Long PUBLISH_INTERVAL_MILLIS = 1000L;
+        Long ANOMALIES_PUBLISH_INTERVAL_MILLIS = 1000L;
+        Long DEVIATIONS_PUBLISH_INTERVAL_MILLIS = 1000L * 10L;
 
         // anomaly behaviour — tuned to the marketplace template's rolling-window rule.
         // ANOMALY_AFTER (warm-up) and ANOMALY_FACTOR (>20% magnitude, so each anomaly trips the rule)

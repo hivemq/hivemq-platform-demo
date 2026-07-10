@@ -11,7 +11,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.hivemq.client.mqtt.datatypes.MqttQos;
 import com.hivemq.client.mqtt.mqtt5.Mqtt5BlockingClient;
 import com.hivemq.client.mqtt.mqtt5.message.publish.Mqtt5Publish;
-import com.hivemq.platform.demo.domain.dto.SensorReadingDto;
+import com.hivemq.platform.demo.domain.dto.AnomaliesSensorReadingDto;
 import io.reactivex.rxjava3.core.Completable;
 import io.reactivex.rxjava3.core.Scheduler;
 import io.reactivex.rxjava3.functions.Consumer;
@@ -24,7 +24,7 @@ import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
 @RequiredArgsConstructor
-public class MockDataPublisher {
+public class AnomaliesDataPublisher {
 
     private final Mqtt5BlockingClient mqttClient;
     private final ObjectMapper objectMapper;
@@ -53,7 +53,7 @@ public class MockDataPublisher {
     }
 
     private Completable publish(Mqtt5BlockingClient client) {
-        return interval(0, PUBLISH_INTERVAL_MILLIS, MILLISECONDS, ioScheduler)
+        return interval(0, ANOMALIES_PUBLISH_INTERVAL_MILLIS, MILLISECONDS, ioScheduler)
                 .map(tick -> tick + 1)
                 .concatMapIterable(this::publish)
                 .concatMapCompletable(message -> fromAction(() -> client.publish(message)));
@@ -74,7 +74,7 @@ public class MockDataPublisher {
             final var mqtt5Publish = Mqtt5Publish.builder()
                     .topic(topic)
                     .qos(MqttQos.AT_MOST_ONCE)
-                    .payload(objectMapper.writeValueAsBytes(new SensorReadingDto(value, sensor.unit(), ts)))
+                    .payload(objectMapper.writeValueAsBytes(new AnomaliesSensorReadingDto(value, sensor.unit(), ts)))
                     .build();
 
             publishes.add(mqtt5Publish);
