@@ -97,14 +97,24 @@ public interface Constants {
         String TOPIC_PREFIX = "hivemq-agentic-ai-demo/factory/sensor";
         Long PUBLISH_INTERVAL_MILLIS = 1000L;
 
-        // anomaly behaviour — tuned to the marketplace template's rolling-window rule.
-        // ANOMALY_AFTER (warm-up) and ANOMALY_FACTOR (>20% magnitude, so each anomaly trips the rule)
-        // must not be relaxed. ANOMALY_RATE is a demo knob (per-sensor, per-tick chance): each anomaly
-        // trips the agent's rule and sends ONE alert email, so this directly sets email volume
-        // (≈ rate × 60 × #sensors per minute → 0.01 ≈ 1-2/min). Lower it for a calmer inbox; raising it
-        // is fine up to ≲0.15, beyond which frequent anomalies pollute the detector's rolling mean.
+        // anomaly behaviour — tuned to the marketplace template's rolling-window rule (agent v1.0.9),
+        // which fires when, inside a rolling 30-sample window, max > avg*1.20 OR min < avg*0.80.
+        //
+        // We inject a GUARANTEED periodic spike rather than a per-tick probability: with a per-second
+        // publisher and a 30-sample window, one spike every ANOMALY_PERIOD_TICKS (≤30) means every
+        // post-warm-up window is certain to contain at least one anomalous reading, so the rule trips
+        // deterministically within one window instead of only by chance. (The earlier probabilistic
+        // ANOMALY_RATE=0.01 put an anomaly in a given window only ~26% of the time, so temperature and
+        // pressure — whose normal noise never reaches ±20% — went quiet for long stretches.)
+        //
+        // ANOMALY_AFTER (warm-up, lets the baseline settle before the first spike) and ANOMALY_FACTOR
+        // (±30% magnitude, comfortably past the ±20% band so each spike trips the rule) must not be
+        // relaxed. ANOMALY_PERIOD_TICKS is the demo knob: lower = spikes land sooner/more often. The
+        // template's own govern rate cap (max 2 alert pairs per agent lifetime) quiets the demo after
+        // the first couple of alerts regardless, so this mainly guarantees those first alerts land
+        // fast and every time. Keep it ≤ 30 (the window size) so every window is guaranteed a spike.
         Integer ANOMALY_AFTER = 60;
-        Double ANOMALY_RATE = 0.01;
+        Integer ANOMALY_PERIOD_TICKS = 15;
         Double ANOMALY_FACTOR = 1.30;
 
         String CLIENT_ID_PREFIX = "demo-sensor-publisher-";

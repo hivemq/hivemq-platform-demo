@@ -64,8 +64,13 @@ public class MockDataPublisher {
         final var ts = System.currentTimeMillis();
         final var publishes = new ArrayList<Mqtt5Publish>(SensorProfile.DEFAULTS.size());
 
-        for (final var sensor : SensorProfile.DEFAULTS) {
-            final var anomaly = armed && random.nextDouble() < ANOMALY_RATE;
+        for (var i = 0; i < SensorProfile.DEFAULTS.size(); i++) {
+            final var sensor = SensorProfile.DEFAULTS.get(i);
+            // Guaranteed periodic spike: one anomaly per sensor every ANOMALY_PERIOD_TICKS ticks after
+            // warm-up. The per-sensor offset (i) staggers the three sensors so they don't all spike on
+            // the same tick. With a per-second publisher and a 30-sample evaluator window, a period ≤ 30
+            // guarantees every post-warm-up window contains an anomaly, so the rule trips deterministically.
+            final var anomaly = armed && (sampleN + i) % ANOMALY_PERIOD_TICKS == 0;
             final var value = round3(anomaly ? anomalyValue(sensor) : baselineValue(sensor));
             final var topic = TOPIC_PREFIX + "/" + sensor.name();
 
